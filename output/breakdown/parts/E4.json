@@ -1,0 +1,171 @@
+{
+  "id": "E4",
+  "name": "F02 Nhập hàng",
+  "description": "Kiểm hàng nhập theo dòng và xác nhận phiếu (SCR-022): field P0 + ảnh (G-19), kiểm nhiệt 2 lớp ADR-008 (A cảnh báo + cách ly, B chặn), xác nhận idempotent sinh lô, sổ di chuyển, sự kiện trạng thái và deviation. Bảng dùng chung (locations, suppliers, deviations, idempotency_keys, lot_status_events, inventory_movements) dựng ở E1.",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S4.1",
+      "name": "Tạo phiếu nhập và ghi kết quả kiểm từng dòng (SCR-022)",
+      "description": "Người nhận hàng tạo phiếu theo nhà cung cấp, ghi dòng kiểm (SKU, lô, NSX, hạn, nhiệt độ, bao bì, SL, vị trí, mã truy xuất, ảnh); lưu được khi thiếu P0.",
+      "screen": "SCR-022",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-4.1.1",
+          "name": "Mở rộng inbound_receipts, inbound_lines và lots cho kiểm hàng nhập",
+          "role": "be",
+          "md": null,
+          "description": "Migration inbound_receipts.supplier_id, cột mới inbound_lines (NSX, bao bì, ghi chú, location_id, mã truy xuất, photo_ref, photo_sha256, policy_version_id, temp_out_of_range, lot_id), lots (location_id, manufactured_date); CHECK beef 10 chữ số.",
+          "checklist": ["Cột + FK tới suppliers/locations/policy versions", "CHECK beef 10 chữ số, SL 1..99 999, nhiệt −50..50", "Trigger 0800 B cập nhật theo cột mới", "Grant cột theo vai trò inbound:write"],
+          "acceptance_criteria": ["Dòng thiếu P0 (chỉ có SKU) vẫn insert được", "Mã beef sai độ dài bị DB từ chối"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-022 §9", "prototype-vs-design-gap G-19", "screens-group-b-extract G22-4", "BR-INV-04"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.1.2", "BE-1.1.3", "BE-1.4.2"]
+        },
+        {
+          "id": "BE-4.1.2",
+          "name": "Viết API danh sách, tạo phiếu nhập và API master cho ô chọn",
+          "role": "be",
+          "md": null,
+          "description": "View inbound_receipt_list_view + GET /api/inbound-receipts (lọc, escape LIKE, ngày M_225, phân trang 50, đếm thiếu P0/ngoài ngưỡng); POST theo supplier_id (422 M_218); GET /api/suppliers, /api/locations, /api/skus thêm traceLane.",
+          "checklist": ["View + GET lọc/phân trang", "POST phiếu + validate supplier active", "GET suppliers/locations (zone, active, quarantine)", "GET skus trả traceLane"],
+          "acceptance_criteria": ["Khoảng ngày đảo ngược trả 400 M_225", "Supplier ngưng dùng trả 422 M_218"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-022 §9"],
+          "special_constraint": false,
+          "depends_on": ["BE-4.1.1", "BE-1.5.3"]
+        },
+        {
+          "id": "BE-4.1.3",
+          "name": "Viết API thêm/sửa/xóa dòng nhập và upload ảnh kiểm hàng",
+          "role": "be",
+          "md": null,
+          "description": "POST/PATCH/DELETE lines: zod cho phép thiếu P0, refine M_203/M_221/M_222, map 409 M_211 / 422 M_210; POST …/photo: upload bucket private, SHA-256 server-side ghi photo_sha256 + audit_log, thay ảnh giữ ảnh cũ, signed URL 5 phút.",
+          "checklist": ["Zod dòng + refine ngày/bao bì", "Chặn sửa khi phiếu đã confirmed (409 M_211)", "Upload ≤10MB JPG/PNG/HEIC (M_223)", "SHA-256 vào cột + audit_log"],
+          "acceptance_criteria": ["Sửa dòng của phiếu confirmed trả 409 M_211", "Ảnh upload có photo_sha256 khớp file gốc"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-022 §9", "SCR-022 spec#5-11.13.3"],
+          "special_constraint": false,
+          "depends_on": ["BE-4.1.1", "INFRA-1.5.1"]
+        },
+        {
+          "id": "FE-4.1.4",
+          "name": "Làm trang danh sách phiếu nhập và dialog tạo phiếu",
+          "role": "fe",
+          "md": null,
+          "description": "Vùng lọc (trạng thái, nhà cung cấp, khoảng ngày, số phiếu) đồng bộ URL, kiểm ngày M_225, bảng phiếu (số dòng, thiếu P0, ngoài ngưỡng, trạng thái, người xác nhận), phân trang, dialog tạo phiếu lọc supplier (M_200).",
+          "checklist": ["Bộ lọc + URL sync", "Bảng + badge đếm lỗi", "Dialog tạo phiếu", "Nút tạo chỉ cho inbound:write"],
+          "acceptance_criteria": ["Tạo phiếu xong chuyển tới trang chi tiết", "Vai trò chỉ xem không thấy nút tạo"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-022 Layout 1"],
+          "special_constraint": false,
+          "depends_on": ["BE-4.1.2", "FE-1.5.4"]
+        },
+        {
+          "id": "FE-4.1.5",
+          "name": "Làm trang chi tiết phiếu nhập với bảng dòng 14 cột",
+          "role": "fe",
+          "md": null,
+          "description": "Header phiếu, bảng dòng 14 cột (badge nhiệt độ/hạn/bao bì/trace/ảnh, tô nền dòng lỗi, cột lô đã sinh khi confirmed), trạng thái loading/not found/empty/confirmed.",
+          "checklist": ["Header + trạng thái phiếu", "Bảng + badge phán định", "Cột lô đã sinh khi confirmed", "Phiếu confirmed hiển thị giá trị ngưỡng đã chụp"],
+          "acceptance_criteria": ["Dòng ngoài ngưỡng được tô nền và có badge", "Phiếu confirmed không còn nút sửa/xóa dòng"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-022 Layout 2"],
+          "special_constraint": false,
+          "depends_on": ["BE-4.2.1"]
+        },
+        {
+          "id": "FE-4.1.6",
+          "name": "Làm form dòng kiểm hàng tối ưu cửa kho và chụp/tải ảnh",
+          "role": "fe",
+          "md": null,
+          "description": "Form 13 field: P0 gợi ý không chặn, giữ SKU/vị trí/bao bì sau khi lưu, máy quét + Enter chuyển focus, ô ≥44px, phán định nhiệt khi blur, vị trí lọc theo vùng (通常 / -Q), mã truy xuất theo trace_lane; ảnh capture + thumbnail + thay ảnh.",
+          "checklist": ["Field + ghi chú bao bì bắt buộc có điều kiện", "Quét mã + Enter, ô ≥ 44px", "Vị trí lọc theo vùng SKU", "Ảnh accept=image/* capture, disable khi dòng chưa lưu"],
+          "acceptance_criteria": ["Lưu dòng xong focus về ô mã lô, giữ SKU/vị trí/bao bì", "Không upload được ảnh khi dòng chưa lưu"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-022 item 11", "SCR-022 spec#5-11.13"],
+          "special_constraint": false,
+          "depends_on": ["BE-4.1.3", "FE-4.1.5"]
+        }
+      ]
+    },
+    {
+      "id": "S4.2",
+      "name": "Kiểm nhiệt 2 lớp và xác nhận phiếu idempotent (SCR-022)",
+      "description": "Kiểm trước xác nhận trả đủ lỗi chặn/cảnh báo (ADR-008: lớp A ngoài ngưỡng → cách ly + deviation, lớp B vùng SKU ≠ vùng vị trí → chặn); xác nhận 1 lần duy nhất với Idempotency-Key, sinh lô bất biến.",
+      "screen": "SCR-022",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-4.2.1",
+          "name": "Viết hàm inbound_receipt_check và GET chi tiết phiếu kèm kết quả kiểm",
+          "role": "be",
+          "md": null,
+          "description": "Hàm inbound_receipt_check(p_receipt_id) trả blocking + warnings (lineNo, messageId, params): P0 M_202, lớp B M_204, -Q M_212/M_213, ngưng M_210/M_215, trùng lô M_224/M_206, thiếu policy M_214, cảnh báo M_205/M_216/M_219/M_220; mở rộng view + GET /{id}.",
+          "checklist": ["Ngưỡng theo ngày JST của arrived_at", "Đủ nhánh chặn + cảnh báo, sắp theo dòng", "Mở rộng inbound_lines_with_temp_check", "Test SQL từng nhánh"],
+          "acceptance_criteria": ["Phiếu nhiều lỗi trả toàn bộ lỗi, không dừng ở lỗi đầu", "Dòng ngoài ngưỡng chỉ là cảnh báo, không chặn"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-022 §9", "ADR-008", "SCR-022 spec#5-11.11.3"],
+          "special_constraint": false,
+          "depends_on": ["BE-4.1.1"]
+        },
+        {
+          "id": "BE-4.2.2",
+          "name": "Viết RPC confirm_inbound_receipt idempotent và route POST confirm",
+          "role": "be",
+          "md": null,
+          "description": "RPC 8 bước: role, idempotency_keys (cùng key → kết quả cũ, key khác sau confirm → 409 M_208), for update, NO_LINES, check (422 CHECK_FAILED), sinh lots + lot_status_events + inventory_movements + deviations, snapshot dòng, audit chung correlation_id; route bắt buộc header Idempotency-Key.",
+          "checklist": ["Idempotency theo key + ref_id phiếu", "Sinh lô + sự kiện create/quarantine + movement + deviation", "Cách ly lô ngoài ngưỡng / thiếu trace vào vị trí -Q", "Route map 409/422/403/404/5xx"],
+          "acceptance_criteria": ["Gửi lại cùng key trả 200 với cùng kết quả, không sinh lô trùng", "Lô ngoài ngưỡng có status quarantine và 1 deviation temp_out_of_range"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-022 §9 RPC", "ADR-002", "ADR-008", "prototype-vs-design-gap G-22"],
+          "special_constraint": false,
+          "depends_on": ["BE-4.2.1", "BE-1.1.1"]
+        },
+        {
+          "id": "FE-4.2.3",
+          "name": "Làm panel kiểm trước xác nhận, dialog xác nhận và dialog kết quả",
+          "role": "fe",
+          "md": null,
+          "description": "Panel nhóm Chặn ●/Báo trước ▲ sắp theo dòng, bấm → cuộn + mở form sửa (M_226); dialog xác nhận giữ Idempotency-Key cho mọi lần gửi lại (M_227); dialog kết quả (M_209, bảng lô, link SCR-031/SCR-037 theo quyền); 409/422 cập nhật panel.",
+          "checklist": ["Panel + điều hướng tới dòng", "Key sinh khi mở dialog, giữ khi retry", "Dialog kết quả + link theo quyền", "Map 409 M_208 / 422 CHECK_FAILED"],
+          "acceptance_criteria": ["Bấm xác nhận 2 lần không sinh 2 request khác key", "Còn lỗi chặn thì nút xác nhận bị vô hiệu"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-022 Layout 2", "SCR-022 Layout 3"],
+          "special_constraint": false,
+          "depends_on": ["BE-4.2.2", "FE-4.1.5"]
+        },
+        {
+          "id": "QA-4.2.4",
+          "name": "Viết test case + chạy test SCR-022",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Ma trận P0 từng field, lớp A/B ADR-008, quy tắc -Q, trace beef/rice, phiên bản ngưỡng theo ngày đến, ảnh (định dạng, cỡ, SHA-256), RBAC; xác nhận bấm 2 lần / mạng chập chờn cùng key, 2 tab khác key (M_208), số bản ghi lots/movements/events/deviations.",
+          "checklist": ["Ca form dòng + ảnh", "Ca kiểm 2 lớp + -Q + trace", "Ca idempotency + đồng thời", "Kiểm DB sau xác nhận"],
+          "acceptance_criteria": ["Mọi ca có kết quả + bằng chứng", "Lỗi log thành issue"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-022 §8", "SCR-022 §9", "ADR-008"],
+          "special_constraint": false,
+          "depends_on": ["FE-4.2.3", "FE-4.1.6", "FE-4.1.4"]
+        },
+        {
+          "id": "BRSE-4.2.5",
+          "name": "Xác nhận với khách 7 điểm INFERRED của kiểm hàng nhập",
+          "role": "brse",
+          "md": null,
+          "description": "Mốc phiên bản ngưỡng = ngày đến; NSX không P0; quy tắc -Q áp ở xác nhận (Q&A-B05 ambient); bao bì hỏng không tự cách ly; thiếu mã trace = trace failure; giờ đến = lúc tạo phiếu; ảnh ≤10MB; chặn lô 消費期限 đã hết tại cửa kho; xóa phiếu draft rỗng.",
+          "checklist": ["Soạn câu hỏi tiếng Nhật kèm giả định", "Gửi + theo dõi trả lời", "Cập nhật SCR-022 spec theo câu trả lời"],
+          "acceptance_criteria": ["Mỗi điểm có câu trả lời hoặc giả định ghi rõ", "Spec SCR-022 cập nhật"],
+          "size_hint": "S",
+          "spec_refs": ["SCR-022 §7 G22-5", "SCR-022 §7 G22-6", "SCR-022 §7 G22-7"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

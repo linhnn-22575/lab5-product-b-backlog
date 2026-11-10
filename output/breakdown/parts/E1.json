@@ -1,0 +1,240 @@
+{
+  "id": "E1",
+  "name": "Nền tảng & sửa prototype trái RFP",
+  "description": "Sửa các chỗ prototype LAB-2 làm trái RFP (G-01/02/03 ngưỡng nhiệt, G-15/16 vai trò, G-21 giao diện JP) và dựng nền dùng chung: migration audit/sổ di chuyển/trạng thái lô/master, hạ tầng Tokyo, CI, phân trang 50. Mọi epic tính năng phụ thuộc epic này.",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S1.1",
+      "name": "Tạo migration dữ liệu dùng chung cho mọi feature",
+      "description": "Các bảng append-only và master mà F02/F03/F05/F07 cùng dùng: audit_log, inventory_movements, lot_status_events, locations, suppliers, deviations, idempotency_keys, enum trạng thái lô/đơn (G-07/08/09/10/17/18/22/24).",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-1.1.1",
+          "name": "Tạo audit_log append-only có correlation_id và trigger audit chung",
+          "role": "be",
+          "md": null,
+          "description": "Migration bảng audit_log (actor, action, entity, before/after jsonb, correlation_id) chặn UPDATE/DELETE, hàm audit_write() và trigger audit chung để các RPC gọi (G-17, NFR-AUD-01, ADR-007).",
+          "checklist": ["Bảng audit_log + index (entity, created_at), (correlation_id)", "Trigger chặn UPDATE/DELETE kể cả role authenticated", "Hàm audit_write() nhận correlation_id từ RPC", "RLS: SELECT cho admin/auditor, không INSERT trực tiếp"],
+          "acceptance_criteria": ["UPDATE/DELETE audit_log trả lỗi ở mọi role ứng dụng", "Một RPC ghi nhiều bản ghi audit dùng chung 1 correlation_id"],
+          "size_hint": "M",
+          "spec_refs": ["prototype-vs-design-gap G-17", "ADR-007", "database-design §3.3"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BE-1.1.2",
+          "name": "Tạo inventory_movements, lot_status_events và enum trạng thái lô, đơn",
+          "role": "be",
+          "md": null,
+          "description": "Migration inventory_movements append-only thay cập nhật trực tiếp qty_on_hand, lot_status_events (event_type gồm create), enum lots 5 trạng thái và orders thêm partially_allocated/routed/cancelled (G-09/10/24).",
+          "checklist": ["inventory_movements append-only + view số dư theo lô", "lot_status_events với event_type create/quarantine/hold/release/dispose", "Enum lots: available, quarantine, on_hold, disposed, depleted", "Enum orders mở rộng + migrate dữ liệu prototype", "Chặn DELETE cứng trên lots, inventory_movements, lot_status_events; sửa sai = bút toán đảo / sự kiện mới tham chiếu bản gốc (BR-INV-03)"],
+          "acceptance_criteria": ["Số dư lô tính từ inventory_movements khớp qty_on_hand của seed sau migrate", "Không UPDATE/DELETE được inventory_movements và lot_status_events", "DELETE trên lots/inventory_movements/lot_status_events bị từ chối ở mọi role ứng dụng; sửa sai tạo bút toán đảo có tham chiếu bản gốc"],
+          "size_hint": "L",
+          "spec_refs": ["prototype-vs-design-gap G-09", "prototype-vs-design-gap G-10", "prototype-vs-design-gap G-24", "screens-group-b-extract G22-2", "BR-INV-03"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.1.1"]
+        },
+        {
+          "id": "BE-1.1.3",
+          "name": "Tạo master locations, suppliers và bảng deviations, idempotency_keys",
+          "role": "be",
+          "md": null,
+          "description": "Migration locations (zone, is_quarantine, mã -Q), suppliers + migrate inbound_receipts.supplier_name, deviations (enum temp_out_of_range/trace_missing/zone_mismatch), idempotency_keys có ref_id + request_hash (G-07/08/18/22).",
+          "checklist": ["locations + seed vị trí thường và -Q theo vùng", "suppliers + migrate supplier_name (hậu tố 未登録)", "deviations chốt enum theo DB design", "idempotency_keys thêm ref_id, request_hash"],
+          "acceptance_criteria": ["Phiếu nhập prototype đều có supplier_id sau migrate", "Cùng key với ref_id khác bị phát hiện được bằng truy vấn"],
+          "size_hint": "L",
+          "spec_refs": ["prototype-vs-design-gap G-07", "prototype-vs-design-gap G-08", "prototype-vs-design-gap G-18", "prototype-vs-design-gap G-22", "screens-group-b-extract G22-1", "screens-group-b-extract G22-3"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.1.1"]
+        }
+      ]
+    },
+    {
+      "id": "S1.2",
+      "name": "Chuyển message sang mã M_xx và giao diện tiếng Nhật",
+      "description": "Prototype viết cứng message tiếng Việt trong SQL; RFP bắt giao diện tiếng Nhật, DB trả mã M_xx, API map sang text (G-21, MSG-001).",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-1.2.1",
+          "name": "Thay raise exception tiếng Việt bằng P0001 kèm hint mã M_xx",
+          "role": "be",
+          "md": null,
+          "description": "Sửa mọi RPC/trigger prototype (0500–0800) raise lỗi errcode P0001 + hint M_xx, viết helper API mapDbError() đổi 23505/P0001/PGRST116 sang mã message.",
+          "checklist": ["Liệt kê toàn bộ raise exception trong migration prototype", "Đổi sang P0001 + hint M_xx, detail chứa tham số", "Helper mapDbError() dùng chung cho route handler", "Unit test mapping"],
+          "acceptance_criteria": ["grep không còn chuỗi tiếng Việt trong SQL", "API trả { messageId, params } cho mọi lỗi nghiệp vụ"],
+          "size_hint": "M",
+          "spec_refs": ["prototype-vs-design-gap G-21", "message-list"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "FE-1.2.2",
+          "name": "Dựng catalog message tiếng Nhật và chuyển UI prototype sang tiếng Nhật",
+          "role": "fe",
+          "md": null,
+          "description": "Sinh module TS từ message-list (M_xx → text JP có tham số), hàm t(messageId, params), chuyển nhãn/thông báo các màn prototype sang tiếng Nhật theo common-format.",
+          "checklist": ["Module messages.ts + kiểm thiếu mã lúc build", "Toast/vùng lỗi dùng messageId từ API", "Đổi nhãn menu, bảng, nút sang JP", "Định dạng ngày/số theo common-format"],
+          "acceptance_criteria": ["Không còn chuỗi tiếng Việt hiển thị trên UI", "Lỗi API hiển thị đúng text JP theo messageId"],
+          "size_hint": "L",
+          "spec_refs": ["prototype-vs-design-gap G-21", "common-format", "message-list"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.2.1"]
+        }
+      ]
+    },
+    {
+      "id": "S1.3",
+      "name": "Mở rộng 9 vai trò, RBAC và tách người lập / người duyệt",
+      "description": "Prototype có 4 vai trò, admin toàn quyền; thiết kế 9 vai trò, tách quản trị khỏi quyết định nghiệp vụ và CHECK decided_by <> requested_by (G-15/G-16, RBAC-001).",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-1.3.1",
+          "name": "Mở rộng profiles 9 vai trò và viết current_app_role, has_role",
+          "role": "be",
+          "md": null,
+          "description": "Migration profiles: CHECK role 9 giá trị, is_active, deactivated_at/by/reason, mfa_verified_at, last_sign_in_at, trigger mfa_required theo vai trò; current_app_role() trả NULL khi inactive, has_role(), thu hồi grant update(role).",
+          "checklist": ["Cột mới + CHECK reason 10–500", "Trigger đặt mfa_required theo vai trò đặc quyền", "current_app_role() lọc is_active + has_role(variadic)", "Map 4 vai trò prototype sang 9 vai trò"],
+          "acceptance_criteria": ["User is_active=false có current_app_role() = NULL", "authenticated không UPDATE được cột role trực tiếp"],
+          "size_hint": "M",
+          "spec_refs": ["prototype-vs-design-gap G-15", "SCR-018 §9", "SCR-001 §9", "database-design §3.3"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BE-1.3.2",
+          "name": "Viết lại RLS bảng prototype theo ma trận quyền 9 vai trò",
+          "role": "be",
+          "md": null,
+          "description": "Thay policy RLS 0300 bằng policy theo role-permission-matrix dùng has_role(); thêm CHECK decided_by <> requested_by mẫu cho bảng duyệt và bỏ quyền admin ghi nghiệp vụ.",
+          "checklist": ["Bảng đối chiếu quyền × bảng × thao tác", "Policy SELECT/INSERT/UPDATE theo has_role()", "CHECK tách lập/duyệt cho bảng có decided_by", "Test SQL mỗi vai trò cho bảng chính"],
+          "acceptance_criteria": ["admin không ghi được lots/inbound qua nghiệp vụ ngoài quyền ma trận", "Bản ghi duyệt có decided_by = requested_by bị DB từ chối"],
+          "size_hint": "L",
+          "spec_refs": ["prototype-vs-design-gap G-15", "prototype-vs-design-gap G-16", "role-permission-matrix"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.3.1"]
+        },
+        {
+          "id": "FE-1.3.3",
+          "name": "Cập nhật role-permissions.ts, decideRouteAccess và menu theo 9 vai trò",
+          "role": "fe",
+          "md": null,
+          "description": "Viết lại role-permissions.ts theo role-permission-matrix (quyền màn + thao tác), decideRouteAccess dùng bảng mới, menu trái ẩn mục không có quyền.",
+          "checklist": ["Bảng quyền 9 vai trò × màn", "decideRouteAccess + unit test", "Menu trái lọc theo quyền", "Nút ghi ẩn khi chỉ có quyền đọc"],
+          "acceptance_criteria": ["Unit test 9 vai trò × màn khớp ma trận", "URL màn không có quyền chuyển về trang báo M_20"],
+          "size_hint": "M",
+          "spec_refs": ["role-permission-matrix", "SCR-001 §9"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.3.1"]
+        }
+      ]
+    },
+    {
+      "id": "S1.4",
+      "name": "Sửa ngưỡng nhiệt đúng RFP và lưu theo phiên bản",
+      "description": "Seed prototype sai ngưỡng (冷蔵 0–10, 常温 0–30), sửa trực tiếp temp_zones, 冷凍 bắt buộc min_c; RFP: 冷蔵 0–5, 常温 15–25, 冷凍 ≤ −18 không cận dưới, giao dịch giữ policy_version_id (G-01/02/03, ADR-003).",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-1.4.1",
+          "name": "Tạo temp_zone_policy_versions, seed RFP và hàm effective_temp_policy",
+          "role": "be",
+          "md": null,
+          "description": "Migration temp_zone_policy_versions (min_c nullable, effective_from, updated_at), bỏ min_c/max_c khỏi temp_zones, seed bản 2026-04-01 đúng RFP, hàm effective_temp_policy(zone, at) theo ngày JST.",
+          "checklist": ["Bảng + UNIQUE (zone, effective_from)", "Seed 冷蔵 0–5, 常温 15–25, 冷凍 NULL..−18", "effective_temp_policy() stable, theo app_today/JST", "Cơ chế seed bỏ qua trigger ≥ ngày mai chỉ cho role migration"],
+          "acceptance_criteria": ["effective_temp_policy('frozen', now()) trả min_c NULL, max_c −18", "temp_zones không còn cột min_c/max_c"],
+          "size_hint": "M",
+          "spec_refs": ["prototype-vs-design-gap G-01", "prototype-vs-design-gap G-02", "prototype-vs-design-gap G-03", "SCR-015 §9", "ADR-003"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BE-1.4.2",
+          "name": "Chuyển nơi đọc ngưỡng sang effective_temp_policy và lưu policy_version_id",
+          "role": "be",
+          "md": null,
+          "description": "Sửa view inbound_lines_with_temp_check, GET /api/temp-zones, formatTempZone() đọc ngưỡng qua effective_temp_policy; thêm policy_version_id vào inbound_lines/shipments.",
+          "checklist": ["View tính phán định theo ngày đến", "/api/temp-zones trả bản hiệu lực + version id", "formatTempZone() hiển thị 下限なし khi min_c NULL", "Cột policy_version_id + FK"],
+          "acceptance_criteria": ["Đổi ngưỡng bản tương lai không làm đổi phán định dòng nhập cũ", "Không còn chỗ đọc temp_zones.min_c trong code"],
+          "size_hint": "M",
+          "spec_refs": ["prototype-vs-design-gap G-02", "SCR-015 §9", "ADR-008"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.4.1"]
+        }
+      ]
+    },
+    {
+      "id": "S1.5",
+      "name": "Dựng hạ tầng Tokyo, CI và phân trang 50 dòng",
+      "description": "Môi trường dev/stg Supabase region Tokyo, Storage bucket, pg_cron, pipeline CI; thay cắt 500 dòng bằng phân trang 50 (G-23, FMT-001 List_Paging).",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "INFRA-1.5.1",
+          "name": "Dựng Supabase Tokyo dev/stg, Storage bucket private và bật pg_cron",
+          "role": "infra",
+          "md": null,
+          "description": "Tạo project Supabase region ap-northeast-1 cho dev/stg, bucket inbound-photos private (≤10MB, JPG/PNG/HEIC), bật pg_cron, biến môi trường Vercel theo môi trường.",
+          "checklist": ["2 project Supabase Tokyo + Vercel env", "Bucket inbound-photos private + policy theo vai trò", "Bật extension pg_cron, timezone job JST", "Tài liệu cách chạy migration từng môi trường"],
+          "acceptance_criteria": ["Upload file > 10MB hoặc sai loại bị bucket từ chối", "Job pg_cron thử chạy được trên stg"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-022 §9", "SCR-011 item 18-14", "ADR-001"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "INFRA-1.5.2",
+          "name": "Thiết lập CI GitHub Actions: lint, typecheck, test và kiểm migration",
+          "role": "infra",
+          "md": null,
+          "description": "Workflow GitHub Actions chạy lint, typecheck, unit test, supabase db reset + test SQL trên PR; deploy stg khi merge.",
+          "checklist": ["Job lint + typecheck + vitest", "Job supabase start + db reset + test SQL", "Deploy stg khi merge nhánh chính", "Chặn merge khi job đỏ"],
+          "acceptance_criteria": ["PR có migration lỗi bị CI đỏ", "Merge vào nhánh chính tự deploy stg"],
+          "size_hint": "M",
+          "spec_refs": ["prototype-vs-design-gap §4"],
+          "special_constraint": false,
+          "depends_on": ["INFRA-1.5.1"]
+        },
+        {
+          "id": "BE-1.5.3",
+          "name": "Viết helper phân trang 50 dòng dùng chung cho API danh sách",
+          "role": "be",
+          "md": null,
+          "description": "Helper parsePaging() (page, limit=50) + range() + count exact cho route handler; thay giới hạn 500 dòng ở các GET prototype.",
+          "checklist": ["parsePaging() zod, mặc định 50", "Response { items, page, total }", "Áp vào GET prototype hiện có", "Unit test biên trang"],
+          "acceptance_criteria": ["Không còn .limit(500) trong code", "GET danh sách trả total đúng"],
+          "size_hint": "S",
+          "spec_refs": ["prototype-vs-design-gap G-23", "common-format List_Paging"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "FE-1.5.4",
+          "name": "Tạo component List_Paging dùng chung đồng bộ query string",
+          "role": "fe",
+          "md": null,
+          "description": "Component phân trang theo common-format List_Paging (tổng, trang, đồng bộ ?page=), dùng chung cho mọi bảng danh sách.",
+          "checklist": ["Hiển thị tổng + số trang", "Đồng bộ ?page= với URL", "Reset về trang 1 khi đổi bộ lọc", "aria-label tiếng Nhật"],
+          "acceptance_criteria": ["Đổi trang giữ nguyên bộ lọc trên URL", "Bảng prototype hiện có dùng component này"],
+          "size_hint": "S",
+          "spec_refs": ["prototype-vs-design-gap G-23", "common-format List_Paging"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.5.3"]
+        }
+      ]
+    }
+  ]
+}

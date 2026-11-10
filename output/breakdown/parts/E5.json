@@ -1,0 +1,437 @@
+{
+  "id": "E5",
+  "name": "F03 Tồn kho & lô",
+  "description": "Tra cứu tồn kho theo lô (SCR-030), chi tiết lô + dòng thời gian sự kiện + cách ly thủ công (SCR-031), và máy trạng thái lô quarantine/on_hold/release/dispose có duyệt 2 người (SCR-037).",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S5.1",
+      "name": "Tra cứu tồn kho theo lô (SCR-030)",
+      "description": "Mọi vai trò nghiệp vụ tra cứu lô với 10 điều kiện lọc, sắp FEFO cố định, thấy nhãn hạn và lý do khả dụng = 0. Chỉ đọc.",
+      "screen": "SCR-030",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-5.1.1",
+          "name": "Mở rộng lot_stock_view và thêm bảng tham số hệ thống app_parameters",
+          "role": "be",
+          "md": null,
+          "description": "Mở rộng view lot_stock_view (security_invoker) với temp_zone, NSX, vị trí, supplier, expiry_flag, pending_disposal và công thức qty_available mới; tạo bảng app_parameters (có audit) chứa consumption_warning_days = 3.",
+          "checklist": [
+            "Migration app_parameters (key, value, updated_by/at) + audit, seed consumption_warning_days=3",
+            "View: left join chuỗi inbound_lines → inbound_receipts → suppliers, cờ pending_disposal",
+            "expiry_flag CASE theo app_today() JST; qty_available = 0 khi status ≠ available hoặc 消費期限到達",
+            "Hàm dùng chung needs_relocation (要移動) cho quarantine và on_hold, dùng lại ở SCR-031/037"
+          ],
+          "acceptance_criteria": [
+            "days_left −1/0/1/3/4 cho ra đúng nhãn 消費期限到達/間近/賞味期限切れ",
+            "Đổi consumption_warning_days trong app_parameters thì view đổi theo, không cần sửa code",
+            "Lô on_hold ở khu thường hiện cờ 要移動 giống lô quarantine"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-030 §3", "SCR-030 §4", "BR-EXP-01", "BR-EXP-02", "BR-INV-01"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BE-5.1.2",
+          "name": "Xây RPC search_lot_stock và GET /api/lots với 10 bộ lọc, đạt ≤ 2s",
+          "role": "be",
+          "md": null,
+          "description": "RPC search_lot_stock(p_filter jsonb, p_page, p_page_size) security invoker trả rows + total + summary; GET /api/lots validate zod 10 filter; thêm index và kiểm hiệu năng trên dữ liệu 3 năm.",
+          "checklist": [
+            "zod 10 filter, status csv mặc định 3 trạng thái, escape LIKE, hạn từ ≤ hạn đến (M_303)",
+            "Sắp FEFO cố định (hạn → ngày nhập → id), phân trang 50, summary trên toàn bộ kết quả",
+            "Index lots(location_id), lots(lower(lot_code) text_pattern_ops)",
+            "Sinh dữ liệu 3 năm, EXPLAIN ANALYZE, ghi kết quả"
+          ],
+          "acceptance_criteria": [
+            "Tổng số lô/tồn/khả dụng khớp toàn bộ kết quả, không chỉ trang hiện tại",
+            "Truy vấn 50 dòng trên dữ liệu 3 năm ≤ 2s",
+            "Vai trò chưa gán gọi API nhận 403"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-030 §3", "SCR-030 §9", "BR-FEFO-01", "FR-INV-05"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.1.1"]
+        },
+        {
+          "id": "FE-5.1.3",
+          "name": "Dựng màn tra cứu tồn kho: vùng lọc 10 điều kiện, tóm tắt và bảng lô",
+          "role": "fe",
+          "md": null,
+          "description": "Trang SCR-030 gọi GET /api/lots: vùng lọc đồng bộ URL, dòng tóm tắt, bảng 12 cột có badge nhãn hạn/trạng thái/要移動/廃棄承認待ち, link SCR-031, phân trang 50.",
+          "checklist": [
+            "Lọc áp khi bấm 検索/Enter, URL sync, 条件クリア về mặc định, vị trí phụ thuộc vùng (reset khi đổi vùng)",
+            "Multi-select trạng thái (bỏ chọn hết = hiện cả 5)",
+            "Tooltip lý do khả dụng = 0, badge 要移動, 廃棄承認待ち, link SCR-031 giữ bộ lọc",
+            "Trạng thái loading (giữ số cũ mờ), empty M_32, error M_40/M_41 + 再試行"
+          ],
+          "acceptance_criteria": [
+            "Reload trang với URL có điều kiện cho ra cùng kết quả",
+            "Mã lô sai Format_Code hoặc hạn từ > hạn đến hiện M_13/M_303, không gọi API"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-030 §2", "SCR-030 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.1.2"]
+        },
+        {
+          "id": "QA-5.1.4",
+          "name": "Viết test case + chạy test SCR-030",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test tra cứu tồn kho: biên nhãn hạn theo 2 loại hạn, qty_available theo trạng thái, AND 10 filter, FEFO, tổng khớp toàn bộ kết quả.",
+          "checklist": [
+            "Biên days_left −1/0/1/3/4 × 消費期限/賞味期限",
+            "qty_available theo 5 trạng thái lô + lô 消費期限到達",
+            "Kết hợp 10 filter, filter supplier loại lô seed, sắp FEFO",
+            "Số tổng khớp toàn bộ kết quả qua nhiều trang"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-030 §4", "SCR-030 §6"],
+          "special_constraint": false,
+          "depends_on": ["FE-5.1.3"]
+        }
+      ]
+    },
+    {
+      "id": "S5.2",
+      "name": "Chi tiết lô, lịch sử sự kiện và cách ly thủ công (SCR-031)",
+      "description": "Xem đầy đủ 1 lô và timeline sự kiện bất biến; quality/warehouse_lead cách ly thủ công lô available (admin không được).",
+      "screen": "SCR-031",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-5.2.1",
+          "name": "Tạo view lot_event_timeline và API chi tiết lô, lịch sử sự kiện",
+          "role": "be",
+          "md": null,
+          "description": "View lot_event_timeline union inventory_movements + lot_status_events gộp theo correlation_id, map 10 loại; GET /api/lots/{id}/events (keyset occurred_at,id) và GET /api/lots/{id} to-be có allowedActions.",
+          "checklist": [
+            "View map 10 loại sự kiện theo enum dùng chung đã chốt (G31-1), index (lot_id, occurred_at)",
+            "GET events: tham số before, kinds, limit 50",
+            "GET lot: thông tin nhập chụp lại + phiên bản ngưỡng nhiệt, deviations, pendingDisposal",
+            "allowedActions theo vai trò × state machine (admin không có quarantine)"
+          ],
+          "acceptance_criteria": [
+            "Phân trang keyset không trùng/không sót thẻ khi có sự kiện cùng occurred_at",
+            "Các sự kiện cùng correlation_id trả về như 1 nhóm",
+            "allowedActions chứa quarantine chỉ khi vai trò quality/warehouse_lead và lô available"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-031 §3", "SCR-031 §9", "ADR-007"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.3.1"]
+        },
+        {
+          "id": "BE-5.2.2",
+          "name": "Viết RPC quarantine_lot và API cách ly, API tải bằng chứng dùng chung",
+          "role": "be",
+          "md": null,
+          "description": "RPC quarantine_lot (role, idempotency, FOR UPDATE, kiểm trạng thái + phân bổ, status event, gắn deviation, audit) + POST /api/lots/{id}/quarantine; POST /api/evidence multipart dùng chung SCR-031/037.",
+          "checklist": [
+            "M_301 INVALID_TRANSITION, M_302 LOT_ALLOCATED khi qty_allocated > 0, 422 deviation không hợp lệ",
+            "Lý do 10–500 lưu tiền tố MANUAL:, Idempotency-Key gửi lại không cách ly 2 lần",
+            "POST /api/evidence: PDF/JPG/PNG ≤ 10MB (M_316), trả evidence_ref ≤ 200, signed URL 5 phút khi xem",
+            "Ghi audit_log + correlation_id"
+          ],
+          "acceptance_criteria": [
+            "Cách ly đồng thời với allocate_lot: lô vừa cách ly không phân bổ được",
+            "Gửi lại cùng Idempotency-Key trả kết quả cũ, chỉ 1 lot_status_events"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-031 §4", "SCR-031 §9", "BR-INV-02", "ADR-002"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.3.1", "INFRA-5.2.3"]
+        },
+        {
+          "id": "INFRA-5.2.3",
+          "name": "Tạo bucket quality-evidence riêng tư và job dọn file bằng chứng mồ côi",
+          "role": "infra",
+          "md": null,
+          "description": "Bucket Storage quality-evidence private (đường dẫn {yyyy}/{uuid}) + storage policy; job định kỳ xóa file không được tham chiếu sau 24h (dùng chung SCR-031/037).",
+          "checklist": [
+            "Bucket private + policy chỉ server (service role) ghi",
+            "Quy ước đường dẫn {yyyy}/{uuid}",
+            "Job dọn file > 24h không có tham chiếu trong lot_status_events/deviations"
+          ],
+          "acceptance_criteria": [
+            "Người dùng không đọc được file qua URL công khai, chỉ qua signed URL",
+            "File mồ côi quá 24h bị xóa, file đang được tham chiếu giữ nguyên"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-031 §6", "SCR-037 §5 item 6.7"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "FE-5.2.4",
+          "name": "Dựng phần đầu, thông tin lô 12 trường và dialog cách ly SCR-031",
+          "role": "fe",
+          "md": null,
+          "description": "Header lô (badge trạng thái/hạn/廃棄承認待ち), thông tin 12 trường, bảng deviation, link SCR-022/SCR-037 theo quyền; nút 隔離 + dialog gọi POST /api/lots/{id}/quarantine.",
+          "checklist": [
+            "Nút 隔離 chỉ hiện khi allowedActions có quarantine; disable khi có phân bổ (M_302)",
+            "Dialog: lý do + bộ đếm (M_06), chọn deviation, file hoặc số tham chiếu 1–100, Idempotency-Key sinh khi mở",
+            "Map lỗi M_301/M_302/M_316, thành công M_306 + reload",
+            "Nút quay lại giữ bộ lọc SCR-030; trạng thái loading/not found/error"
+          ],
+          "acceptance_criteria": [
+            "Mỗi trạng thái lô (available/có phân bổ/quarantine/on_hold/chờ hủy/disposed) hiển thị đúng nút và badge",
+            "Bấm gửi 2 lần chỉ tạo 1 lần cách ly"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-031 §2", "SCR-031 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.2.1", "BE-5.2.2"]
+        },
+        {
+          "id": "FE-5.2.5",
+          "name": "Dựng timeline sự kiện lô: 10 loại, lọc, さらに表示, copy correlation ID",
+          "role": "fe",
+          "md": null,
+          "description": "Timeline gọi GET /api/lots/{id}/events: bảng ánh xạ 10 loại sự kiện (nhãn, màu, biến động), lọc loại, tải thêm keyset 50 thẻ, gộp correlation, link tham chiếu theo quyền.",
+          "checklist": [
+            "Bảng ánh xạ 10 loại (receive…adjust), sự kiện ship hiện 便 {route_no}",
+            "Lọc kinds, さらに表示 dùng before",
+            "Copy correlation ID (auditor), link chỉ khi có quyền xem màn đích",
+            "Timeline rỗng hiện 初期データ"
+          ],
+          "acceptance_criteria": [
+            "Thẻ cùng correlation_id hiển thị gộp 1 nhóm",
+            "Không có thao tác sửa/xóa thẻ nào trên UI"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-031 §2", "SCR-031 §4", "ADR-007"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.2.1"]
+        },
+        {
+          "id": "QA-5.2.6",
+          "name": "Viết test case + chạy test SCR-031",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test nút theo vai trò × trạng thái lô, chặn cách ly khi có phân bổ, timeline đủ loại + gộp correlation, keyset, bằng chứng, đồng thời và audit_log.",
+          "checklist": [
+            "Ma trận vai trò (quality, warehouse_lead, admin, auditor…) × trạng thái lô",
+            "Timeline đủ 10 loại, phân trang keyset, lọc kinds",
+            "Đồng thời cách ly vs allocate_lot; gửi lại cùng key",
+            "Kiểm audit_log và file/số tham chiếu bằng chứng"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-031 §4", "SCR-031 §6"],
+          "special_constraint": false,
+          "depends_on": ["FE-5.2.4", "FE-5.2.5"]
+        }
+      ]
+    },
+    {
+      "id": "S5.3",
+      "name": "Máy trạng thái lô: cách ly, 保留, giải phóng, hủy có duyệt 2 người (SCR-037)",
+      "description": "QA (quality) quyết định số phận lô cách ly: on_hold, release về available, dispose; hủy vượt ngưỡng lot_disposal_dual_approval_qty cần người thứ hai duyệt.",
+      "screen": "SCR-037",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-5.3.1",
+          "name": "Tạo migration máy trạng thái lô, lot_status_events và lot_disposal_requests",
+          "role": "be",
+          "md": null,
+          "description": "lots.status 5 giá trị, bảng lot_status_events append-only (trigger chặn UPDATE/DELETE, cột evidence_note, reevaluation_*), locations.is_quarantine + seed C-Q/F-Q, bảng lot_disposal_requests, tham số lot_disposal_dual_approval_qty=100.",
+          "checklist": [
+            "Chốt 1 enum event_type/movement_type dùng chung SCR-022/031/037 (gồm allocate/unallocate/dispose)",
+            "lot_disposal_requests: request_no DSP-####, CHECK decided_by ≠ requested_by, unique partial pending, trigger khóa sau quyết định",
+            "Seed lot_disposal_dual_approval_qty vào app_parameters (chỉ admin sửa, có audit)",
+            "Bước dọn dữ liệu cũ: lô quarantine có qty_allocated > 0 từ prototype"
+          ],
+          "acceptance_criteria": [
+            "UPDATE/DELETE trên lot_status_events bị DB từ chối",
+            "Insert yêu cầu hủy với decided_by = requested_by bị CHECK chặn",
+            "Migration chạy được trên dữ liệu prototype, không còn lô quarantine có phân bổ"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-037 §3", "SCR-037 §6", "sm-lot", "ADR-007"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.1.1"]
+        },
+        {
+          "id": "BE-5.3.2",
+          "name": "Tạo quarantine_lot_view, GET /api/lots/quarantine và phân quyền lot:*",
+          "role": "be",
+          "md": null,
+          "description": "View quarantine_lot_view + GET /api/lots/quarantine (zoneCounts, ambientHasQuarantineLocation, allowedActions); permission lot:release/lot:dispose cho quality, RLS, has_role trong RPC.",
+          "checklist": [
+            "View gồm lý do/thời điểm cách ly, deviation, yêu cầu hủy pending, reevaluation_due",
+            "allowedActions theo state machine; khóa khi có yêu cầu pending (M_321) hoặc qty_allocated > 0",
+            "role-permissions: quality thao tác, warehouse_lead/auditor chỉ xem, còn lại 403"
+          ],
+          "acceptance_criteria": [
+            "zoneCounts khớp số lô từng tab 冷蔵/冷凍/常温",
+            "Vai trò ngoài 3 vai trò gọi API nhận 403"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-037 §3", "SCR-037 §7", "SCR-037 §9"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.3.1"]
+        },
+        {
+          "id": "BE-5.3.3",
+          "name": "Viết RPC hold_lot, release_lot và API 保留/giải phóng lô",
+          "role": "be",
+          "md": null,
+          "description": "RPC hold_lot (kế hoạch, ngày tái đánh giá) và release_lot (kiểm vị trí đích, movement move qty 0, đóng deviation) security definer, 1 transaction, FOR UPDATE, idempotency, audit; POST /api/lots/{id}/hold|release.",
+          "checklist": [
+            "Chuyển hợp lệ: quarantine → on_hold/available; on_hold → available; sai → M_301",
+            "hold: kế hoạch 10–500 (M_325), ngày dự kiến ≥ hôm nay JST (M_326)",
+            "release: vị trí đích bắt buộc khi ở khu -Q, active, không -Q, đúng vùng (M_204/M_313)",
+            "Lý do 10–500, bằng chứng file hoặc evidence_no lưu cột riêng"
+          ],
+          "acceptance_criteria": [
+            "on_hold → quarantine bị chặn M_301",
+            "Release ghi 1 lot_status_events + 1 inventory_movements move và đóng deviation liên quan"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-037 §4", "SCR-037 §9", "BR-TEMP-03", "ADR-002"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.3.1", "BE-5.2.2"]
+        },
+        {
+          "id": "BE-5.3.4",
+          "name": "Viết RPC dispose_lot, decide_lot_disposal và API hủy lô duyệt 2 người",
+          "role": "be",
+          "md": null,
+          "description": "dispose_lot hủy toàn bộ tồn: ≤ ngưỡng hủy ngay (movement dispose), > ngưỡng tạo lot_disposal_requests pending; decide_lot_disposal duyệt/từ chối; POST …/dispose, POST /api/lot-disposal-requests/{id}/decision, GET danh sách/chi tiết (canDecide).",
+          "checklist": [
+            "Đọc ngưỡng lot_disposal_dual_approval_qty từ app_parameters",
+            "Duyệt: người duyệt ≠ người gửi (M_311), ALREADY_DECIDED (M_312), qty đổi → INVALID_TRANSITION",
+            "Từ chối cần comment 10–500 (M_318)",
+            "FOR UPDATE, idempotency, correlation_id, audit"
+          ],
+          "acceptance_criteria": [
+            "qty 100 hủy ngay, qty 101 tạo yêu cầu pending (với ngưỡng 100)",
+            "2 người duyệt cùng lúc: chỉ 1 thành công, người kia nhận M_312"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-037 §4", "SCR-037 §9", "Q&A-B15", "NFR-SEC-02"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.3.1"]
+        },
+        {
+          "id": "FE-5.3.5",
+          "name": "Dựng khung màn SCR-037: tab vùng, bộ lọc, bảng lô cách ly, cột thao tác",
+          "role": "fe",
+          "md": null,
+          "description": "Trang gọi GET /api/lots/quarantine: tab 冷蔵(C-Q)/冷凍(F-Q)/常温 kèm số lô, bộ lọc đồng bộ query, bảng 4.1–4.12, cột thao tác theo allowedActions, ghi chú 常温 M_314, trang 403.",
+          "checklist": [
+            "Tab mặc định, nhãn động 常温, bộ lọc SKU/mã lô/trạng thái",
+            "Badge 要移動 (chỉ cảnh báo), cờ hạn, deviation, badge yêu cầu hủy, tooltip 保留/期限超過",
+            "Disable nút khi pending (M_321) hoặc có phân bổ",
+            "Loading skeleton, empty M_32, lỗi M_40/M_41 + 再試行"
+          ],
+          "acceptance_criteria": [
+            "warehouse_lead/auditor thấy bảng nhưng không thấy nút thao tác",
+            "Lô quá reevaluation_due chỉ hiện 期限超過, trạng thái không đổi"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-037 §2", "SCR-037 §4", "SCR-037 §7"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.3.2"]
+        },
+        {
+          "id": "FE-5.3.6",
+          "name": "Dựng dialog 保留, giải phóng và hủy lô trên SCR-037",
+          "role": "fe",
+          "md": null,
+          "description": "Dialog [10] 保留, [6] giải phóng (upload bằng chứng qua POST /api/evidence, chọn vị trí đích), [7] hủy (nhãn nút theo ngưỡng, M_323), gọi POST /api/lots/{id}/hold|release|dispose.",
+          "checklist": [
+            "保留: kế hoạch + ngày dự kiến (M_325/M_326)",
+            "Giải phóng: vị trí đích lọc theo vùng, file hoặc số tham chiếu (M_307/M_316), map lỗi M_204/M_313",
+            "Hủy: đổi nhãn nút khi vượt ngưỡng, thông báo M_323; sửa câu M_317 theo trạng thái hiện tại",
+            "Xung đột → reload bảng"
+          ],
+          "acceptance_criteria": [
+            "Lô ở khu -Q không gửi được giải phóng khi chưa chọn vị trí đích",
+            "Hủy vượt ngưỡng hiển thị trạng thái 廃棄承認待ち sau khi gửi"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-037 §2", "SCR-037 §4", "SCR-037 §6"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.3.3", "BE-5.3.4", "FE-5.3.5"]
+        },
+        {
+          "id": "FE-5.3.7",
+          "name": "Dựng bảng hủy chờ duyệt và dialog duyệt/từ chối hủy lô",
+          "role": "fe",
+          "md": null,
+          "description": "Bảng [5] yêu cầu hủy pending từ GET /api/lot-disposal-requests và dialog [8] duyệt/từ chối gọi POST …/decision; ẩn thao tác với người gửi (canDecide).",
+          "checklist": [
+            "Bảng request_no, lô, qty, người gửi, thời điểm",
+            "Ẩn nút khi canDecide = false",
+            "Từ chối bắt buộc comment 10–500 (M_318), map M_311/M_312"
+          ],
+          "acceptance_criteria": [
+            "Người gửi yêu cầu không thấy nút duyệt cho yêu cầu của chính mình",
+            "Yêu cầu đã quyết định bởi người khác → thông báo M_312 và tải lại"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-037 §2", "SCR-037 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-5.3.4", "FE-5.3.5"]
+        },
+        {
+          "id": "QA-5.3.8",
+          "name": "Viết test case + chạy test SCR-037",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test máy trạng thái lô, duyệt 2 người (biên 100/101, tự duyệt, đã quyết định, qty đổi, đồng thời), giải phóng theo vị trí đích, bằng chứng, RBAC 3 vai trò.",
+          "checklist": [
+            "Chuyển hợp lệ/bước nhảy sai M_301, yêu cầu pending chặn thao tác",
+            "Biên ngưỡng 100/101, tự duyệt, ALREADY_DECIDED, đồng thời",
+            "Vị trí đích khác vùng/khu -Q/ngưng dùng/ambient không -Q",
+            "RBAC quality/warehouse_lead/auditor + vai trò khác 403"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-037 §4", "SCR-037 §6", "sm-lot"],
+          "special_constraint": false,
+          "depends_on": ["FE-5.3.6", "FE-5.3.7"]
+        },
+        {
+          "id": "BRSE-5.3.9",
+          "name": "Làm rõ với khách các điểm mở của tồn kho và máy trạng thái lô",
+          "role": "brse",
+          "md": null,
+          "description": "Gom câu hỏi E5 gửi khách: N=3 ngày, phạm vi đa kho (warehouse_id), Q&A-B04, Q&A-B12, hủy một phần, tự đóng deviation khi giải phóng, evidence_no, 要移動 có chặn không, định dạng/dung lượng file.",
+          "checklist": [
+            "Soạn Q&A sheet song ngữ (JP/VN) có phương án đề xuất",
+            "Theo dõi trả lời, cập nhật clarifications và spec",
+            "Báo PM rủi ro nếu khách chọn đa kho"
+          ],
+          "acceptance_criteria": [
+            "Mọi câu hỏi có trạng thái trả lời/giả định được chốt",
+            "Kết quả được phản ánh vào spec SCR-030/031/037"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-030 §6", "SCR-031 §6", "SCR-037 §6"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

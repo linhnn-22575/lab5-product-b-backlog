@@ -1,0 +1,272 @@
+{
+  "id": "E2",
+  "name": "F12 Xác thực & phân quyền",
+  "description": "Đăng nhập SSO OIDC + MFA vai trò đặc quyền thay email/mật khẩu (G-20), trang chủ theo vai trò và quản lý người dùng/vai trò (SCR-001, SCR-002, SCR-018). Thẻ giờ lái 4.8/4.10/4.11 của SCR-002 nằm ở E9.",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S2.1",
+      "name": "Đăng nhập SSO, MFA và quản lý phiên (SCR-001)",
+      "description": "Cổng đăng nhập duy nhất: SSO OIDC ở production, form email/mật khẩu chỉ ở demo; chặn thiếu MFA, user vô hiệu, no-role; idle timeout và thiết bị dùng chung.",
+      "screen": "SCR-001",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "INFRA-2.1.1",
+          "name": "Cấu hình OIDC provider IdP công ty cho dev/stg/prod và cờ đăng nhập mật khẩu",
+          "role": "infra",
+          "md": null,
+          "description": "Đăng ký Supabase OIDC provider với IdP công ty từng môi trường, tắt Email provider ở prod, biến AUTH_PASSWORD_LOGIN_ENABLED, redirect URL /auth/callback.",
+          "checklist": ["Client id/secret IdP lưu ở secret store", "Tắt Email provider ở prod", "AUTH_PASSWORD_LOGIN_ENABLED theo môi trường", "Redirect URL + logout URL đăng ký ở IdP"],
+          "acceptance_criteria": ["Prod không đăng nhập được bằng mật khẩu", "Dev/stg đăng nhập SSO thành công với tài khoản test IdP"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-001 §9", "IF-IDP-01"],
+          "special_constraint": false,
+          "depends_on": ["INFRA-1.5.1"]
+        },
+        {
+          "id": "BE-2.1.2",
+          "name": "Viết /auth/sso/start và /auth/callback có PKCE, kiểm MFA và JIT profile",
+          "role": "be",
+          "md": null,
+          "description": "sso/start tạo state/nonce/code_verifier cookie HttpOnly 10 phút, lọc next; callback exchangeCodeForSession, kiểm amr MFA (M_105), is_active (M_106), JIT profile role NULL, cập nhật mfa_verified_at/last_sign_in_at, map ?error= whitelist, audit login.",
+          "checklist": ["PKCE + state/nonce, prompt=login cho thiết bị dùng chung", "Kiểm amr theo danh sách cấu hình được", "Cập nhật mfa_verified_at, last_sign_in_at", "Audit auth.login_success/failure, không log token"],
+          "acceptance_criteria": ["Vai trò đặc quyền đăng nhập thiếu MFA bị chuyển /login?error=mfa_required", "next ngoài domain hoặc > 512 ký tự bị bỏ qua"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-001 item 2-4", "SCR-001 item 2-6", "SCR-001 item 12", "SCR-001 §9"],
+          "special_constraint": false,
+          "depends_on": ["INFRA-2.1.1", "BE-1.3.1", "BE-1.1.1"]
+        },
+        {
+          "id": "BE-2.1.3",
+          "name": "Viết middleware chặn phiên sai và mở rộng GET /api/me",
+          "role": "be",
+          "md": null,
+          "description": "Middleware decideRouteAccess + chặn amr=password khi cờ tắt + so mfa_required với amr khi đổi vai trò + hủy phiên user vô hiệu (/login?error=deactivated); /api/me thêm mfaRequired, isActive, 403 M_20 khi không vai trò.",
+          "checklist": ["Chặn amr=password ở prod (M_103)", "Đổi sang vai trò đặc quyền giữa phiên → bắt đăng nhập lại", "is_active=false → hủy phiên, M_106", "/api/me + 403 no-role"],
+          "acceptance_criteria": ["User bị vô hiệu bị đẩy ra ở request kế tiếp", "User không vai trò gọi API nghiệp vụ nhận 403 M_20"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-001 item 12", "SCR-018 §5-11.5", "SCR-001 §9"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.1.2", "FE-1.3.3"]
+        },
+        {
+          "id": "BE-2.1.4",
+          "name": "Làm app_sessions, heartbeat idle 15 phút, thiết bị dùng chung và logout",
+          "role": "be",
+          "md": null,
+          "description": "Bảng app_sessions (theo DB design), POST /api/session/heartbeat kiểm idle server-side (idle_timeout), cookie ký ycl_shared_device, logout local + RP-initiated ở thiết bị dùng chung, audit logout/idle/expired.",
+          "checklist": ["app_sessions theo cột DB design (device_id, expires_at)", "Heartbeat: polling không tính là thao tác", "Thời gian idle là tham số cấu hình", "RP-initiated logout qua end_session_endpoint"],
+          "acceptance_criteria": ["Quá thời gian idle, request kế tiếp trả 401 + redirect idle_timeout", "Logout ở thiết bị dùng chung đăng xuất cả phiên IdP"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-001 §5 item 8-1", "SCR-001 item 11-2", "SCR-001 §9"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.1.2"]
+        },
+        {
+          "id": "FE-2.1.5",
+          "name": "Làm màn đăng nhập tiếng Nhật và panel thông báo chưa có vai trò",
+          "role": "fe",
+          "md": null,
+          "description": "Màn login: nút SSO, banner + form demo khi cờ bật, validate, map lỗi Supabase/?error= sang M_100–M_106, M_40/M_41; panel no-role trong layout (app) ẩn sidebar, nút tải lại/đăng xuất.",
+          "checklist": ["Layout production vs demo theo cờ", "Vùng lỗi chỉ map giá trị whitelist", "Ghi chú thiết bị dùng chung, cấp tài khoản", "Panel no-role thay nội dung + sidebar"],
+          "acceptance_criteria": ["Prod không render form mật khẩu", "?error=<giá trị lạ> không hiển thị gì"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-001 §5 item 1-10", "SCR-001 item 7-2"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.1.2", "FE-1.2.2"]
+        },
+        {
+          "id": "FE-2.1.6",
+          "name": "Làm bộ đếm idle, dialog cảnh báo 60 giây và đồng bộ đa tab",
+          "role": "fe",
+          "md": null,
+          "description": "Idle timer client theo tham số server, dialog cảnh báo + đếm ngược 60s, BroadcastChannel('ycl-activity') đồng bộ đa tab, gửi heartbeat khi có thao tác.",
+          "checklist": ["Cảnh báo trước hết hạn 60s", "Thao tác ở tab khác reset bộ đếm", "Hết giờ → full page load về /login?error=idle_timeout", "Polling nền không reset bộ đếm"],
+          "acceptance_criteria": ["Hai tab mở: thao tác ở tab A không làm tab B hiện cảnh báo", "Hết đếm ngược tự đăng xuất"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-001 item 11-1..11-4"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.1.4"]
+        },
+        {
+          "id": "QA-2.1.7",
+          "name": "Viết test case + chạy test SCR-001",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test SSO happy/lỗi, thiếu MFA, deactivated, no-role, open-redirect next, reflect ?error=, idle đa tab, cờ demo; kiểm audit_log không chứa token.",
+          "checklist": ["Bộ test case theo trạng thái §8", "Ca bảo mật: next, ?error=, amr=password ở prod", "Idle + thiết bị dùng chung", "Bằng chứng audit_log"],
+          "acceptance_criteria": ["Mọi ca có kết quả + bằng chứng", "Lỗi tìm thấy được log thành issue"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-001 §8", "SCR-001 §9"],
+          "special_constraint": false,
+          "depends_on": ["FE-2.1.5", "FE-2.1.6", "BE-2.1.3"]
+        }
+      ]
+    },
+    {
+      "id": "S2.2",
+      "name": "Trang chủ theo vai trò (SCR-002, trừ thẻ giờ lái)",
+      "description": "Trang chủ chỉ đọc với bộ thẻ việc chờ cố định theo vai trò. Thẻ 4.8 / 4.10 / 4.11 (giờ lái 2024) tách sang E9; E2 làm khung + các thẻ còn lại.",
+      "screen": "SCR-002",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-2.2.1",
+          "name": "Viết lại get_home_summary khung và route GET /api/home-summary",
+          "role": "be",
+          "md": null,
+          "description": "RPC get_home_summary() stable/security invoker/search_path='' đọc current_app_role(), ma trận thẻ cấu hình server, chỉ tính key của vai trò; route trả cards[] qua zod, no-store, 401/403/500.",
+          "checklist": ["Cấu hình ma trận 9 vai trò × thẻ (chừa slot 4.8/4.10/4.11)", "Thẻ chỉ có link khi vai trò xem được màn đích", "Zod response, sai shape → 500", "Cache-Control: no-store"],
+          "acceptance_criteria": ["Mỗi vai trò chỉ nhận đúng các thẻ của mình", "Vai trò no-role nhận 403"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-002 §9", "SCR-002 item 4"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.3.1"]
+        },
+        {
+          "id": "BE-2.2.2",
+          "name": "Viết truy vấn thẻ kho, chất lượng, đơn và hợp đồng của trang chủ",
+          "role": "be",
+          "md": null,
+          "description": "Truy vấn thẻ 4.1, 4.2 (số ngày từ lot_status_events), 4.3, 4.12, 4.13, 4.4, 4.5, 4.6 (loại yêu cầu tự tạo), 4.14–4.17 theo app_today() JST; bảng chưa có dữ liệu trả 0.",
+          "checklist": ["Thẻ kho/chất lượng + dòng phụ", "Thẻ đơn/hợp đồng/ngoại lệ, 4.17 loại legacy", "4.6 loại yêu cầu do chính mình tạo", "Đếm biên theo ngày JST"],
+          "acceptance_criteria": ["Dữ liệu seed cho số đếm đúng từng thẻ", "Bảng rỗng trả 0, không lỗi"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-002 item 4.1–4.6", "SCR-002 item 4.12–4.17"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.2.1", "BE-1.1.2"]
+        },
+        {
+          "id": "BE-2.2.3",
+          "name": "Viết truy vấn thẻ tuyến chưa gán, chưa công bố và kiểm hiệu năng",
+          "role": "be",
+          "md": null,
+          "description": "Truy vấn thẻ 4.7 (tuyến chưa gán) và 4.9 (chưa công bố) từ routes/route_versions; đo p95 ≤ 1s mỗi vai trò, thêm index cần thiết.",
+          "checklist": ["Thẻ 4.7, 4.9 (bảng F07 rỗng → 0)", "EXPLAIN các truy vấn thẻ", "Index thiếu", "Đo p95 từng vai trò trên dữ liệu seed"],
+          "acceptance_criteria": ["p95 get_home_summary ≤ 1s cho cả 9 vai trò", "Thẻ 4.7/4.9 trả 0 khi chưa có tuyến"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-002 item 4.7", "SCR-002 item 4.9", "SCR-002 §9 hiệu năng"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.2.1"]
+        },
+        {
+          "id": "FE-2.2.4",
+          "name": "Làm trang chủ, component thẻ chung và tự làm mới 5 phút",
+          "role": "fe",
+          "md": null,
+          "description": "Header + thời điểm tổng hợp + nút làm mới, auto-refresh theo visibilitychange, component thẻ (tone, xám 対応不要 khi 0, link/không link, aria), lưới 3/2/1 cột, banner M_110, giữ số cũ khi lỗi.",
+          "checklist": ["Skeleton loading, 更新失敗 giữ số cũ", "Component thẻ + màu kèm chữ (WCAG 2.2 AA)", "Lưới responsive + banner M_110", "Chừa slot render thẻ 4.8/4.11 cho E9"],
+          "acceptance_criteria": ["Tab ẩn không gọi refresh", "Lỗi 500 vẫn giữ số cũ và hiện 更新失敗"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-002 item 1–5", "SCR-002 §8"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.2.1"]
+        },
+        {
+          "id": "QA-2.2.5",
+          "name": "Viết test case + chạy test SCR-002",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Ma trận 9 vai trò × thẻ (đúng thẻ, thứ tự, link), điều kiện đếm biên (ngày JST, 消費期限, legacy), trạng thái lỗi/giữ số cũ. Thẻ giờ lái test ở E9.",
+          "checklist": ["Ma trận vai trò × thẻ", "Ca biên ngày JST, 消費期限", "Trạng thái loading/lỗi/tất cả 0", "Kiểm link theo quyền"],
+          "acceptance_criteria": ["Mọi ô ma trận có kết quả", "Lỗi log thành issue"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-002 §7", "SCR-002 §8"],
+          "special_constraint": false,
+          "depends_on": ["FE-2.2.4", "BE-2.2.2", "BE-2.2.3"]
+        }
+      ]
+    },
+    {
+      "id": "S2.3",
+      "name": "Quản lý người dùng và vai trò (SCR-018)",
+      "description": "admin gán 1 vai trò chính, xem MFA, vô hiệu hóa / kích hoạt lại; auditor chỉ đọc. Không tạo/xóa user (JIT qua SSO).",
+      "screen": "SCR-018",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-2.3.1",
+          "name": "Viết RPC đổi vai trò, vô hiệu hóa user và route PATCH tương ứng",
+          "role": "be",
+          "md": null,
+          "description": "RPC admin_set_user_role / admin_set_user_active (security definer, for update, expected* khóa lạc quan, P0001 hint M_120/M_122/M_127/M_22, audit) + PATCH /api/users/:id/role, /status; thu hồi phiên khi vô hiệu.",
+          "checklist": ["Spike: xóa auth.refresh_tokens trong RPC vs Admin API signOut", "Chặn tự đổi vai trò / tự vô hiệu", "Lý do 10–500 bắt buộc khi vô hiệu", "Map lỗi 403/404/409/400"],
+          "acceptance_criteria": ["User bị vô hiệu không gọi được API ở request kế tiếp", "Hai admin sửa cùng lúc: người sau nhận 409 M_22"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-018 §9", "SCR-018 §5-11.5", "screens-group-b-extract G18-2"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.3.1", "BE-1.1.1"]
+        },
+        {
+          "id": "BE-2.3.2",
+          "name": "Mở rộng GET /api/users có lọc, phân trang 50 và RLS profiles",
+          "role": "be",
+          "md": null,
+          "description": "GET /api/users: q (escape %/_), role/none, status, mfa=unverified, phân trang 50; RLS profiles_select_admin_or_auditor, quyền users:read.",
+          "checklist": ["Zod query params", "Escape ký tự LIKE", "Phân trang qua helper chung", "RLS chỉ admin/auditor đọc"],
+          "acceptance_criteria": ["Vai trò khác gọi API nhận 403", "?role=none trả đúng user chưa có vai trò"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-018 §9", "SCR-018 item 2"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.3.1", "BE-1.5.3"]
+        },
+        {
+          "id": "FE-2.3.3",
+          "name": "Làm trang danh sách user có bộ lọc đồng bộ URL và chế độ chỉ đọc",
+          "role": "fe",
+          "md": null,
+          "description": "Bộ lọc (debounce 300ms, vai trò gồm 未割当, trạng thái, chưa MFA) đồng bộ URL + preset từ SCR-002, bảng user (badge MFA, trạng thái, dòng 自分), phân trang, auditor chỉ đọc.",
+          "checklist": ["Bộ lọc + URL sync + preset ?role=none, ?mfa=unverified", "Bảng + badge + lần đăng nhập cuối", "Skeleton 5 dòng, rỗng M_32, lỗi tải", "auditor không thấy control ghi"],
+          "acceptance_criteria": ["Mở link từ SCR-002 lọc sẵn đúng", "auditor không có select vai trò/nút vô hiệu"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-018 item 1–4"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.3.2", "FE-1.5.4"]
+        },
+        {
+          "id": "FE-2.3.4",
+          "name": "Làm dialog đổi vai trò, vô hiệu hóa và hộp kết quả của SCR-018",
+          "role": "fe",
+          "md": null,
+          "description": "Select vai trò trong ô mở dialog (M_125 / M_31, cảnh báo bỏ vai trò), dialog vô hiệu hóa (lý do 10–500, bộ đếm), xác nhận kích hoạt lại (M_124), hộp kết quả map lỗi.",
+          "checklist": ["Hủy/lỗi trả select về giá trị cũ", "Đang lưu khóa mọi dòng", "409 tự tải lại dòng", "Hộp kết quả role=status/alert"],
+          "acceptance_criteria": ["Hủy dialog không gọi API và select về giá trị cũ", "Không thể chọn vô hiệu hóa chính mình"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-018 item 5–7", "SCR-018 spec#5-10.2"],
+          "special_constraint": false,
+          "depends_on": ["BE-2.3.1", "FE-2.3.3"]
+        },
+        {
+          "id": "QA-2.3.5",
+          "name": "Viết test case + chạy test SCR-018",
+          "role": "qa_manual",
+          "md": null,
+          "description": "State machine user, tự bảo vệ, auditor read-only, 409 đồng thời, hiệu lực ngay sau vô hiệu, MFA khi lên vai trò đặc quyền; gọi API thẳng không quyền, UPDATE trực tiếp bị chặn, audit_log.",
+          "checklist": ["Ca state machine active_no_role ↔ active_with_role ↔ inactive", "Ca bảo mật API/RLS", "Ca đồng thời 2 admin", "Bằng chứng audit_log"],
+          "acceptance_criteria": ["Mọi ca có kết quả + bằng chứng", "Lỗi log thành issue"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-018 §8", "SCR-018 §9"],
+          "special_constraint": false,
+          "depends_on": ["FE-2.3.4", "BE-2.1.3"]
+        },
+        {
+          "id": "BRSE-2.3.6",
+          "name": "Xác nhận với khách các điểm INFERRED của xác thực và trang chủ",
+          "role": "brse",
+          "md": null,
+          "description": "Gom câu hỏi SCR-001/002/018: idle 15 phút + cảnh báo 60s, claim amr của IdP, đăng ký thiết bị dùng chung, nguồn M_104, auto-refresh 5 phút, p95 1s, 1 người 1 vai trò, không xóa user.",
+          "checklist": ["Soạn câu hỏi tiếng Nhật kèm giả định hiện tại", "Gửi + theo dõi trả lời", "Cập nhật spec/tham số cấu hình theo câu trả lời"],
+          "acceptance_criteria": ["Mỗi điểm có câu trả lời hoặc giả định được ghi rõ", "Spec SCR-001/002/018 cập nhật"],
+          "size_hint": "S",
+          "spec_refs": ["SCR-001 §7 #1-3", "SCR-002 §7 #13", "SCR-018 §7"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

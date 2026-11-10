@@ -1,0 +1,370 @@
+{
+  "id": "E8",
+  "name": "F07 Lập tuyến & công bố (phần không thuộc luật giờ lái)",
+  "description": "Nền dữ liệu F07, phân quyền dispatcher/transport_manager, SCR-060 gán đơn/điểm dừng/segment, adapter IF-MAP-01, SCR-062 vòng đời phiên bản (giữ tuyến published khi có nháp), outbox + IF-MAIL-01. Phần dính giờ lái 2024 (BR-DRV-21 tự chèn nghỉ, cổng publish BR-DRV-20/22/23, driver_duty_records) nằm ở E9 và phụ thuộc các task ở đây.",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S8.1",
+      "name": "Dựng nền dữ liệu và phân quyền F07",
+      "description": "Migration bảng tuyến lõi, bảng phụ (rejections, travel_time_cache) và vai trò dispatcher/transport_manager/auditor với RLS chỉ đọc, ghi qua security definer.",
+      "screen": "SCR-060",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-8.1.1",
+          "name": "Tạo migration bảng tuyến lõi: xe, tài xế, routes, versions, stops, segments",
+          "role": "be",
+          "md": null,
+          "description": "Migration vehicles, drivers, routes (+updated_at, current_version), route_versions (status draft/created/checked/published/superseded/discarded, change_category, change_reason, driver_rule_version_id, published_at/by), route_stops (+travel_min/source/fetched_at/manual_reason, place_name), route_segments (auto_inserted) + unique partial (ngày, xe)/(ngày, tài xế). E9 dùng route_versions.driver_rule_version_id và route_segments.auto_inserted.",
+          "checklist": ["Enum route_versions.status đủ 6 giá trị", "segment_type bỏ 'rest' (060 gap #7)", "Unique partial index xe/tài xế theo ngày bỏ qua tuyến cancelled", "Seed xe/tài xế mẫu cho dev"],
+          "acceptance_criteria": ["Migration up/down chạy sạch", "Tạo 2 tuyến cùng ngày cùng tài xế bị DB chặn", "Type Supabase sinh lại không lỗi build"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §3", "SCR-062 §3", "database-design §3.2", "SCR-060 gap #7", "prototype-vs-design-gap G-14"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BE-8.1.2",
+          "name": "Tạo migration rejections, travel_time_cache và cột khách hàng/đơn",
+          "role": "be",
+          "md": null,
+          "description": "Migration route_assignment_rejections, travel_time_cache (key from, to, slot 1h, fetched_at), customers (+delivery_window_*, default_service_min), enum orders.status thêm routed/partially_allocated/cancelled.",
+          "checklist": ["Index tra cache theo (from, to, slot)", "default_service_min mặc định 20", "Thêm giá trị enum không phá dữ liệu LAB-2", "Cập nhật type"],
+          "acceptance_criteria": ["Đơn cũ giữ nguyên trạng thái sau migration", "Ghi/đọc cache theo key chạy được"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-060 §3", "SCR-060 logic-5", "sm-order"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.1"]
+        },
+        {
+          "id": "BE-8.1.3",
+          "name": "Thêm vai trò dispatcher, transport_manager, auditor và RLS tuyến",
+          "role": "be",
+          "md": null,
+          "description": "Thêm vai trò dispatcher, transport_manager, auditor + quyền route:write vào role-permission; RLS chỉ SELECT trên routes/route_versions/route_stops/route_segments, ghi qua RPC security definer có has_role.",
+          "checklist": ["Cập nhật bảng quyền + middleware Next.js", "Policy SELECT cho vai trò xem (gồm warehouse cho SCR-053)", "Chặn INSERT/UPDATE trực tiếp từ client", "Test quyền từng vai trò"],
+          "acceptance_criteria": ["auditor đọc được tuyến nhưng gọi RPC ghi bị 403", "Client không ghi trực tiếp được bảng tuyến"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-060 §7", "SCR-062 §7", "role-permission-matrix"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.1"]
+        }
+      ]
+    },
+    {
+      "id": "S8.2",
+      "name": "Gán đơn, sắp điểm dừng và dựng segment tuyến",
+      "description": "RPC/API SCR-060: xem kế hoạch ngày, tạo tuyến, gán đơn kiểm 6 lý do, dựng segment drive/wait/service, lưu điểm dừng có khóa lạc quan. Tự chèn nghỉ BR-DRV-21 thuộc E9.",
+      "screen": "SCR-060",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-8.2.1",
+          "name": "Viết get_route_plan và create_route kèm API GET plan, POST routes",
+          "role": "be",
+          "md": null,
+          "description": "RPC get_route_plan(p_date) trả đơn chưa gán (lý do 1–3 tính, 4–6 đọc route_assignment_rejections, mapStatus) + GET /api/routes/plan; RPC create_route + POST /api/routes (Idempotency-Key, 2 depot stop, segment 出庫前/帰庫後).",
+          "checklist": ["Ngày < hôm nay → M_618", "Xe/tài xế trùng → M_603/M_605", "Tạo version đầu status created", "Idempotency-Key cho POST"],
+          "acceptance_criteria": ["Đơn nhiều vùng nhiệt hiện lý do MIXED_TEMP_ZONE", "Tạo tuyến sinh đủ 2 depot stop và segment pre/post"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §9 get_route_plan", "SCR-060 §9 create_route", "SCR-060 logic-4", "SCR-060 logic-7"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.2", "BE-8.1.3"]
+        },
+        {
+          "id": "BE-8.2.2",
+          "name": "Viết assign_orders_to_route kiểm 6 lý do và lưu rejections",
+          "role": "be",
+          "md": null,
+          "description": "RPC assign_orders_to_route + POST /api/routes/{id}/assign: kiểm từng đơn theo thứ tự NOT_ALLOCATED → MIXED_TEMP_ZONE → NO_VEHICLE_ZONE → TEMP_ZONE_MISMATCH → CAPACITY_EXCEEDED → SERVICE_HOURS, M_602 đơn đã ở tuyến khác, lưu rejections 4–6, đơn → routed, checked → created qua M_606.",
+          "checklist": ["Khóa đơn chống gán đồng thời", "Lưu bền lý do 4–6", "Tuyến checked sửa cần confirm → về created", "Chỉ sửa được version draft/created/checked"],
+          "acceptance_criteria": ["Hai dispatcher gán cùng đơn đồng thời → 1 thành công, 1 M_602", "Tải 100% vượt → CAPACITY_EXCEEDED, đơn còn ở bảng chưa gán"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §9 assign_orders_to_route", "SCR-060 logic-4-7", "BR-TEMP-02 D", "BR-ORD-01"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.2.1"]
+        },
+        {
+          "id": "BE-8.2.3",
+          "name": "Viết build_route_segments dựng drive/wait/service và giờ đến",
+          "role": "be",
+          "md": null,
+          "description": "Hàm build_route_segments(route_version_id) dựng segment drive/wait/service/break thủ công, depot pre/post, planned_arrival từng điểm; KHÔNG tự chèn nghỉ — module chuỗi lái BR-DRV-11/21 của E9 trả danh sách nghỉ để hàm này ghi với auto_inserted=true.",
+          "checklist": ["Thứ tự segment theo seq", "Chờ khi đến sớm hơn khung khách", "Nhận input danh sách nghỉ chèn từ ngoài (mặc định rỗng)", "Unit test 3 điểm dừng"],
+          "acceptance_criteria": ["Giờ đến từng điểm = giờ trước + travel_min + service", "Gọi lại 2 lần cho cùng version ra kết quả giống nhau"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-060 §9 build_route_segments", "SCR-060 logic-6-5", "SCR-060 gap #2"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.1"]
+        },
+        {
+          "id": "BE-8.2.4",
+          "name": "Viết save_route_stops có khóa lạc quan, kiểm BR-TIME-02",
+          "role": "be",
+          "md": null,
+          "description": "RPC save_route_stops + PUT /api/routes/{id}/stops: khóa lạc quan updated_at (M_22), ghi stops, lấy thời gian di chuyển cho đoạn thiếu, gọi build_route_segments, rollback nếu ngoài 05:00–23:00 (M_614), cảnh báo khung khách M_615, checked → created, audit. E9 gắn bước chèn nghỉ vào đây.",
+          "checklist": ["Validate pre/post 0–120, service 5–180, nghỉ 10–180", "Rollback toàn bộ khi vi phạm BR-TIME-02", "Từ chối khi version không phải draft/created/checked (M_607)", "audit_log giá trị cũ/mới"],
+          "acceptance_criteria": ["Dời giờ làm điểm giao 23:05 → rollback, M_614", "Lưu đè với updated_at cũ → M_22"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §9 save_route_stops", "SCR-060 §4", "BR-TIME-02"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.2.3", "BE-8.3.1"]
+        }
+      ]
+    },
+    {
+      "id": "S8.3",
+      "name": "Tích hợp bản đồ IF-MAP-01 và thông báo IF-MAIL-01",
+      "description": "Adapter lấy thời gian di chuyển có cache/fallback, API lấy lại, cấu hình secret; notification_outbox + worker gửi mail có retry.",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-8.3.1",
+          "name": "Viết adapter IF-MAP-01 batch, timeout 10s, cache 7 ngày",
+          "role": "be",
+          "md": null,
+          "description": "Adapter IF-MAP-01: gọi batch, timeout 10s, cache travel_time_cache key (from, to, slot 1h) 7 ngày, fallback cache → lỗi (正常/キャッシュ使用中 M_621/障害 M_620), đếm M_623, ghi travel_source/fetched_at vào route_stops.",
+          "checklist": ["Interface tách để mock khi test", "Fallback cache khi timeout", "Trả trạng thái dịch vụ cho badge", "Không log API key"],
+          "acceptance_criteria": ["Timeout có cache → dùng cache, trạng thái キャッシュ使用中", "Không cache + lỗi → 障害, cho nhập tay"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §9 IF-MAP-01", "SCR-060 logic-3", "SCR-060 logic-13"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.2", "INFRA-8.3.1"]
+        },
+        {
+          "id": "BE-8.3.2",
+          "name": "Viết API POST travel-times/refresh không ghi đè đoạn nhập tay",
+          "role": "be",
+          "md": null,
+          "description": "POST /api/routes/{id}/travel-times/refresh: lấy lại thời gian di chuyển qua adapter, không ghi đè đoạn manual khi chưa confirm (M_31), audit giá trị cũ, dựng lại segment, checked → created.",
+          "checklist": ["Cờ confirm ghi đè manual", "Audit từng đoạn đổi", "Gọi build_route_segments sau khi cập nhật", "Trả số đoạn dùng cache/manual"],
+          "acceptance_criteria": ["Không confirm → đoạn manual giữ nguyên", "Tuyến checked sau refresh về created"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-060 §9 refresh", "SCR-060 logic-10"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.3.1", "BE-8.2.3"]
+        },
+        {
+          "id": "INFRA-8.3.1",
+          "name": "Cấu hình secret, env và egress cho IF-MAP-01",
+          "role": "infra",
+          "md": null,
+          "description": "Đặt API key IF-MAP-01 vào secret Supabase/Vercel, biến env theo môi trường, cho phép egress tới endpoint bản đồ.",
+          "checklist": ["Secret cho dev/stg/prod", "Biến endpoint + timeout", "Kiểm egress từ server", "Ghi tài liệu xoay vòng key"],
+          "acceptance_criteria": ["Server stg gọi được API bản đồ", "Key không xuất hiện trong repo/log"],
+          "size_hint": "S",
+          "spec_refs": ["SCR-060 §9 IF-MAP-01"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "INFRA-8.3.2",
+          "name": "Dựng notification_outbox và worker gửi mail IF-MAIL-01",
+          "role": "infra",
+          "md": null,
+          "description": "Bảng notification_outbox (route_published/route_changed/route_cancelled, 送信待ち/送信済/送信失敗) + worker Supabase cron/edge function gửi qua IF-MAIL-01, retry 1/5/15/60 phút rồi mỗi 60 phút tới 24h, thất bại báo lên SCR-002; tài xế không email không chặn.",
+          "checklist": ["Khóa hàng khi worker lấy job", "Lịch retry tham số hóa", "Secret mail relay", "Cờ cảnh báo cho SCR-002"],
+          "acceptance_criteria": ["Mail relay lỗi → retry đúng lịch, quá 24h → 送信失敗", "Worker chạy 2 instance không gửi trùng"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-062 §9 IF-MAIL-01", "SCR-062 logic-10"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.1"]
+        }
+      ]
+    },
+    {
+      "id": "S8.4",
+      "name": "Màn hình lập tuyến SCR-060",
+      "description": "UI chọn ngày, gán đơn, bảng tuyến, bảng điểm dừng dạng nháp, dialog nghỉ/nhập tay thời gian, chế độ chỉ đọc; test SCR-060 phần không thuộc BR-DRV-21.",
+      "screen": "SCR-060",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "FE-8.4.1",
+          "name": "Dựng khung trang lập tuyến và bảng đơn chưa gán",
+          "role": "fe",
+          "md": null,
+          "description": "Chọn ngày qua URL ?date= (chặn quá khứ, guard nháp M_31), badge dịch vụ bản đồ; bảng đơn chưa gán với badge lý do + tooltip, disable đơn lý do tĩnh, nút gán + M_606 + M_609.",
+          "checklist": ["Đổi ngày khi có nháp → M_31", "Badge 正常/キャッシュ使用中/障害", "Chọn nhiều đơn hợp lệ", "Hiện kết quả gán từng đơn"],
+          "acceptance_criteria": ["Đơn NOT_ALLOCATED không chọn được", "Gán vào tuyến checked hỏi M_606 trước khi gửi"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §2", "SCR-060 logic-2", "SCR-060 logic-4"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.2.1", "BE-8.2.2"]
+        },
+        {
+          "id": "FE-8.4.2",
+          "name": "Làm bảng tuyến, dialog 新規ルート và các nút lưu/kiểm",
+          "role": "fe",
+          "md": null,
+          "description": "Bảng tuyến (xe, vùng, tài xế, 出庫, tải %, 計画拘束 tham khảo, trạng thái), dialog 新規ルート (xe/tài xế đã dùng disable, giờ bước 5 phút), nút 保存/再取得/拘束時間チェック (lưu nháp rồi sang SCR-061), chỉ đọc khi published hoặc auditor (M_607).",
+          "checklist": ["計画拘束 không tô màu 13h/15h", "Option đã dùng disable", "Nút 拘束時間チェック lưu trước khi chuyển", "Chế độ chỉ đọc ẩn mọi nút ghi"],
+          "acceptance_criteria": ["Tuyến published hiện chỉ đọc + M_607", "Tạo tuyến xong xuất hiện ngay trong bảng"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §2", "SCR-060 logic-6", "SCR-060 logic-7"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.2.1"]
+        },
+        {
+          "id": "FE-8.4.3",
+          "name": "Làm bảng điểm dừng dạng nháp với sắp xếp và service time",
+          "role": "fe",
+          "md": null,
+          "description": "Bảng điểm dừng nháp: ↑↓/外す, sửa service time, badge khung giờ khách/サービス時間外, hiển thị badge 自動 cho segment auto_inserted (logic chèn ở E9), dòng tổng, beforeunload, xử lý M_22/M_614/M_615 khi lưu.",
+          "checklist": ["Mọi sửa là nháp tới khi 保存", "Badge cảnh báo khung khách", "Hiển thị nghỉ tự động chỉ đọc", "Guard rời trang"],
+          "acceptance_criteria": ["Đổi thứ tự rồi rời trang hỏi M_31", "Lưu bị rollback M_614 giữ nguyên nháp trên màn"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §2", "SCR-060 logic-8", "SCR-060 logic-9"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.2.4"]
+        },
+        {
+          "id": "FE-8.4.4",
+          "name": "Làm dialog thêm điểm nghỉ và nhập tay thời gian di chuyển",
+          "role": "fe",
+          "md": null,
+          "description": "Dialog thêm điểm nghỉ (10–180 phút, < 10 phút không tính nghỉ) và dialog nhập tay thời gian di chuyển (1–720 phút, căn cứ 10–500 ký tự, banner M_620), confirm ghi đè đoạn manual M_31.",
+          "checklist": ["Validate M_06", "Banner khi bản đồ 障害", "Confirm trước khi ghi đè manual", "Đưa kết quả vào nháp"],
+          "acceptance_criteria": ["Nghỉ 9 phút bị chặn với thông báo", "Nhập tay thiếu căn cứ không lưu được"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-060 logic-9-3", "SCR-060 logic-13", "SCR-060 §4"],
+          "special_constraint": false,
+          "depends_on": ["FE-8.4.3", "BE-8.3.2"]
+        },
+        {
+          "id": "QA-8.4.1",
+          "name": "Viết test case + chạy test SCR-060 (gán đơn, bản đồ, nháp)",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test case + chạy: 6 lý do không gán, biên 05:00/23:00, tải 90%/100%, đồng thời M_602/M_603/M_605, bản đồ timeout/cache/nhập tay/> 24h/ghi đè manual, khóa lạc quan, auditor chỉ đọc. Ca BR-DRV-21 thuộc E9.",
+          "checklist": ["Viết ca theo 4 nhóm", "Chạy ca đồng thời bằng 2 trình duyệt", "Giả lập bản đồ lỗi", "Ghi bug + re-test"],
+          "acceptance_criteria": ["Mỗi lý do 1–6 có ca riêng pass", "Báo cáo pass/fail đủ ca, không bug cao còn mở"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §4", "SCR-060 §10"],
+          "special_constraint": false,
+          "depends_on": ["FE-8.4.4", "FE-8.4.2"]
+        }
+      ]
+    },
+    {
+      "id": "S8.5",
+      "name": "Quản lý phiên bản tuyến, công bố và hủy (SCR-062)",
+      "description": "Phần không thuộc cổng tuân thủ của publish (supersede, outbox), tạo bản sau công bố giữ tuyến published, bỏ nháp, hủy tuyến (chặn khi có đơn đã xuất), diff, KPI và UI SCR-062. Cổng BR-DRV-20/22/23 + driver_duty_records ở E9.",
+      "screen": "SCR-062",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-8.5.1",
+          "name": "Viết bước ghi công bố (supersede, outbox) và API GET versions",
+          "role": "be",
+          "md": null,
+          "description": "Hàm nội bộ apply_route_publish(version_id): version → published, bản published trước → superseded, routes.status='published', current_version, enqueue outbox route_published/route_changed, audit; E9 publish_route gọi hàm này sau khi qua cổng BR-DRV-20/22/23. Kèm GET versions (prePublish, notification, kpi).",
+          "checklist": ["Không expose trực tiếp cho client", "Lần đầu → route_published, lần sau → route_changed", "Khóa route chống công bố đồng thời", "GET versions trả trạng thái outbox"],
+          "acceptance_criteria": ["Sau công bố bản 2, bản 1 là superseded và chỉ 1 bản published", "Có đúng 1 dòng outbox mỗi lần công bố"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-062 §9 publish_route bước 6–9", "SCR-062 §9 get_route_versions"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.1", "INFRA-8.3.2"]
+        },
+        {
+          "id": "BE-8.5.2",
+          "name": "Viết create_route_version giữ tuyến published khi có bản nháp",
+          "role": "be",
+          "md": null,
+          "description": "RPC create_route_version + POST versions: lý do 10–500 + 区分 7 giá trị, copy stops/segments sang bản draft, Idempotency-Key; SỬA THIẾT KẾ (quyết định 1): routes.status giữ 'published', bản published không đổi, SCR-060 sửa trên bản draft.",
+          "checklist": ["Chặn khi đã có draft mở", "Copy đủ stops/segments", "Không đổi routes.status", "in_progress/completed/cancelled → M_646"],
+          "acceptance_criteria": ["Sau tạo nháp, kho vẫn xuất theo bản published (E7)", "Bản published không bị sửa nội dung"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-062 §9 create_route_version", "SCR-062 logic-12", "SCR-053 gap #3"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.5.1"]
+        },
+        {
+          "id": "BE-8.5.3",
+          "name": "Viết discard_route_draft và cancel_route chặn khi có đơn đã xuất",
+          "role": "be",
+          "md": null,
+          "description": "RPC discard_route_draft (draft → discarded, khôi phục trạng thái đơn theo bản published, không thông báo) và cancel_route (lý do bắt buộc, đơn routed → allocated, outbox nếu đã công bố; CHẶN nếu có đơn shipped trên tuyến) + 2 API POST.",
+          "checklist": ["Khôi phục đơn được gán/gỡ trong nháp", "Kiểm orders.status='shipped' trước khi hủy", "Outbox route_cancelled chỉ khi từng published", "Audit cả 2 thao tác"],
+          "acceptance_criteria": ["Tuyến có 1 đơn đã xuất → hủy bị từ chối", "Bỏ nháp đưa đơn về đúng trạng thái theo bản published"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-062 §9 discard/cancel", "SCR-062 logic-7", "SCR-062 gap #2"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.5.2"]
+        },
+        {
+          "id": "BE-8.5.4",
+          "name": "Viết route_version_diff và view KPI đổi tuyến sau công bố",
+          "role": "be",
+          "md": null,
+          "description": "Hàm route_version_diff ghép theo order_id / place_name+vị trí / depot + GET diff; view route_post_publish_change_kpi (ngưỡng 15 phút giả định) + GET KPI.",
+          "checklist": ["Diff đúng 2 bản, khác → M_649", "Phân loại thêm/bớt/đổi giờ/đổi thứ tự", "Ngưỡng KPI là tham số", "Liệt kê đơn ảnh hưởng"],
+          "acceptance_criteria": ["Đổi thứ tự 2 điểm hiện đúng 2 dòng thay đổi", "KPI tính đúng trên dữ liệu mẫu 3 tuyến"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-062 §9 route_version_diff", "SCR-062 logic-11"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.5.1"]
+        },
+        {
+          "id": "FE-8.5.1",
+          "name": "Làm header, dải trạng thái, checklist và nút 公開 SCR-062",
+          "role": "fe",
+          "md": null,
+          "description": "Header + badge bản, dải 5 bước, checklist trước công bố (dữ liệu kiểm/xác nhận/rule version do E9 cung cấp, độ mới thời gian di chuyển, số đoạn nhập tay), nút 公開 + dialog M_640 (+M_648), lỗi 422 làm mới checklist; khối trạng thái thông báo + KPI.",
+          "checklist": ["Link sang SCR-061", "Làm mới checklist khi 422", "Badge 送信待ち/送信済/送信失敗", "KPI 目標/基準値"],
+          "acceptance_criteria": ["Publish lỗi hiện lý do và checklist cập nhật", "Thông báo thất bại hiện badge đỏ"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-062 §2", "SCR-062 logic-4", "SCR-062 logic-10"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.5.1", "BE-8.5.4"]
+        },
+        {
+          "id": "FE-8.5.2",
+          "name": "Làm bảng phiên bản, diff và dialog đổi/hủy/bỏ nháp",
+          "role": "fe",
+          "md": null,
+          "description": "Bảng phiên bản + chọn so sánh (M_649) + bảng diff + đơn ảnh hưởng; dialog 公開後の変更 (M_644, 区分, lý do), dialog hủy tuyến (M_647, lỗi khi có đơn đã xuất), nút bỏ nháp (M_31).",
+          "checklist": ["Chỉ cho chọn đúng 2 bản", "Validate lý do 10–500", "Hiện lỗi chặn hủy rõ đơn nào đã xuất", "Ẩn nút với auditor"],
+          "acceptance_criteria": ["Chọn 3 bản → M_649", "Sau tạo nháp, badge tuyến vẫn published kèm chú thích có nháp"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-062 §2", "SCR-062 logic-8", "SCR-062 logic-12"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.5.3", "BE-8.5.4"]
+        },
+        {
+          "id": "QA-8.5.1",
+          "name": "Viết test case + chạy test SCR-062 vòng đời phiên bản",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test case + chạy: đổi → nháp → bỏ / công bố lại (supersede), kho vẫn xuất khi có nháp, hủy tuyến (có/không đơn đã xuất), thông báo thất bại + retry, diff, auditor. Ca cổng BR-DRV-20/22/23 thuộc E9.",
+          "checklist": ["Ca vòng đời đủ nhánh", "Ca hủy có đơn shipped", "Giả lập mail relay lỗi", "Ghi bug + re-test"],
+          "acceptance_criteria": ["Mọi nhánh trạng thái route_versions có ca pass", "Không bug cao còn mở"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-062 §4", "SCR-062 §10"],
+          "special_constraint": false,
+          "depends_on": ["FE-8.5.2", "FE-8.5.1"]
+        },
+        {
+          "id": "BRSE-8.5.1",
+          "name": "Làm rõ giả định F07: 1 tài xế/ngày, IF-MAP-01, KPI, hủy tuyến",
+          "role": "brse",
+          "md": null,
+          "description": "Q&A khách cho gap 060 #1 (1 tài xế 1 tuyến/ngày), #3/#4 (timeout, > 24h IF-MAP-01), #5 (tách đơn nhiều vùng), #6 (service mặc định); 062 #2 (hủy khi đã xuất), #3 (KPI 15 phút), #5 (người lập ≠ người công bố), #9 (tuyến kẹt published khi chưa có F06).",
+          "checklist": ["Soạn câu hỏi tiếng Nhật kèm giả định", "Ưu tiên 060 #1 vì ảnh hưởng engine E9", "Theo dõi trả lời", "Cập nhật spec + báo task bị ảnh hưởng"],
+          "acceptance_criteria": ["Mỗi gap có câu trả lời hoặc ghi rõ giữ giả định", "060 #1 chốt trước khi E9 làm engine gộp ca"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-060 gap #1", "SCR-060 gap #3", "SCR-060 gap #5", "SCR-062 gap #2", "SCR-062 gap #3", "SCR-062 gap #5", "SCR-062 gap #9"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

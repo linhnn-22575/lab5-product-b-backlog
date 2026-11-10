@@ -1,0 +1,93 @@
+{
+  "id": "E10",
+  "name": "Làm rõ spec & Q&A khách (BrSE)",
+  "description": "Gom câu hỏi mở của LAB-4 gửi khách, theo dõi trả lời và phản ánh vào spec; đồng bộ các chỗ spec lệch DB phát hiện khi break task. Q&A-B06/B07 (giờ lái) nằm ở E9.",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S10.1",
+      "name": "Gửi và chốt Q&A khách cho luồng hàng hóa",
+      "description": "Q&A-B01…B05, B08…B17 trong business-rules §8 đang chạy bằng giả định; cần khách trả lời trước khi chốt BE tương ứng.",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BRSE-10.1.1",
+          "name": "Soạn bộ Q&A tiếng Nhật cho Q&A-B01…B05, B08…B17",
+          "role": "brse",
+          "md": null,
+          "description": "Viết lại 15 câu hỏi mở của business-rules §8 thành Q&A tiếng Nhật, mỗi câu kèm phương án đang giả định và ảnh hưởng nếu khác.",
+          "checklist": ["Mỗi câu có mã, bối cảnh, phương án A/B, giả định hiện tại", "Ghi issue bị ảnh hưởng", "Ưu tiên câu chặn BE (B01, B02, B03, B09, B14)", "Review nội bộ với tech lead"],
+          "acceptance_criteria": ["File Q&A có đủ 15 câu, mỗi câu trỏ được tới issue", "Câu chặn BE được đánh dấu ưu tiên cao"],
+          "size_hint": "M",
+          "spec_refs": ["business-rules §8"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BRSE-10.1.2",
+          "name": "Hỏi khách vòng duyệt SKU master (RFP S3-01) có bắt buộc Phase 1",
+          "role": "brse",
+          "md": null,
+          "description": "SCR-010 cho admin ghi thẳng, RFP S3-01 yêu cầu created→review→active→retired. Xin khách chốt có làm SCR-017 ở Phase 1 hay không (Q&A-B11).",
+          "checklist": ["Nêu chênh lệch RFP vs thiết kế", "Ước tính effort nếu phải làm vòng duyệt", "Ghi kết quả vào PREMISE"],
+          "acceptance_criteria": ["Có câu trả lời của khách hoặc ghi rõ giả định tiếp tục dùng", "PREMISE cập nhật dòng tương ứng"],
+          "size_hint": "S",
+          "spec_refs": ["SCR-010 §7", "SCR-010 §10 #9", "prototype-vs-design-gap G-25"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BRSE-10.1.3",
+          "name": "Phản ánh câu trả lời Q&A vào spec và issue liên quan",
+          "role": "brse",
+          "md": null,
+          "description": "Khi khách trả lời, sửa business-rules / spec màn hình, đổi nhãn INFERRED → EXTRACTED và comment vào issue bị ảnh hưởng.",
+          "checklist": ["Cập nhật bảng Q&A (trạng thái Đã trả lời)", "Sửa spec + History of change", "Comment issue bị ảnh hưởng, báo PM nếu đổi effort"],
+          "acceptance_criteria": ["Mỗi câu đã trả lời có commit sửa spec tương ứng", "Issue bị ảnh hưởng có comment trỏ commit"],
+          "size_hint": "M",
+          "spec_refs": ["business-rules §8"],
+          "special_constraint": false,
+          "depends_on": ["BRSE-10.1.1"]
+        }
+      ]
+    },
+    {
+      "id": "S10.2",
+      "name": "Đồng bộ spec với database design",
+      "description": "Nhiều spec ghi 'chưa có trong database-design' dù DB đã có; một số enum và cột lệch nhau giữa spec và DB.",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BRSE-10.2.1",
+          "name": "Sửa ghi chú lỗi thời 'chưa có trong DB' ở các spec màn hình",
+          "role": "brse",
+          "md": null,
+          "description": "Rà SCR-010/011/016/018/037/040/041/043/062: bỏ các ghi chú cột/bảng 'chưa có' khi database-design §3 đã định nghĩa; thống nhất tên cột app_sessions, effective_driver_rule.",
+          "checklist": ["Grep 'chưa có trong database-design' toàn bộ spec", "Đối chiếu từng chỗ với DB-001 §3", "Sửa + ghi History of change"],
+          "acceptance_criteria": ["Grep không còn ghi chú lỗi thời", "Tên hàm/cột trong spec khớp DB-001"],
+          "size_hint": "M",
+          "spec_refs": ["database-design §3", "SCR-018 §9", "SCR-016 §9"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BE-10.2.2",
+          "name": "Thống nhất enum lệch giữa spec và DB trước khi viết migration",
+          "role": "be",
+          "md": null,
+          "description": "Chốt một bộ giá trị cho deviations.deviation_type, lot_status_events.event_type (thêm sự kiện tạo lô), route_segments.segment_type (break/rest), gộp unforeseeable_events.evidence_ref/evidence_ref_no, thêm cột tham chiếu đối tượng cho idempotency_keys.",
+          "checklist": ["Lập bảng enum hiện tại spec vs DB", "Chốt giá trị cùng BrSE", "Cập nhật database-design", "Báo các issue migration liên quan"],
+          "acceptance_criteria": ["database-design chỉ còn 1 định nghĩa cho mỗi enum", "Migration E1/E4/E8/E9 dùng đúng enum đã chốt"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-022 §9", "SCR-031 §9", "SCR-063 §9", "database-design §3.2"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

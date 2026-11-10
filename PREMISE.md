@@ -1,0 +1,56 @@
+# PREMISE — Backlog LAB-5 khác bản LAB-4 ở đâu
+
+Bản gốc: bộ thiết kế LAB-4 Product B (`lab4-product-b-design`, nộp 2026-11-08).
+Các chỗ dưới đây phát hiện **trong lúc break task**, không phải đổi ý tùy tiện. Mỗi dòng có mã (P-xx, A5-xx, D-xx) để
+`task-breakdown.md` và `estimate.md` trỏ tới.
+
+> Cột "Issue bị ảnh hưởng" ghi mã task trong backlog (ví dụ `BE-9.11.2`). Trên GitHub Project, mã này nằm ở đầu tiêu đề issue.
+
+## 1. Spec thêm / bỏ / sửa so với LAB-4
+
+| Mã | Spec (mã/file) | Thêm/Bỏ/Sửa | Trước → sau | Vì sao | Issue bị ảnh hưởng |
+|---|---|---|---|---|---|
+| P-01 | SCR-064 「乗務実績入力」 (mới) | Thêm | Không có màn nào → màn nhập ca / giờ lái / nghỉ thực tế theo ngày × tài xế, ghi `driver_duty_records.source = actual_manual`. Spec viết trong sprint, đặt tại `specs/SCR-064_SPEC.md` (task BRSE-9.11.1) | Chỗ hở phát hiện khi break SCR-061: engine 2024 cần giờ thực tế để tính lái TB 2 ngày / 2 tuần, tháng, năm, nghỉ giữa ca (SCR-061 §logic-5 bước 2.2). LAB-4 PREMISE A-03 giả định "dispatcher nhập cuối ngày" nhưng không spec nào có chỗ nhập; SCR-002 và SCR-061 chỉ **đọc** `actual_manual` | BRSE-9.11.1, BE-9.11.2, FE-9.11.3, QA-9.11.4 |
+| P-02 | SCR-016 §5 item 9.2, §9 PATCH | Sửa | Form + API thiếu 2 tham số → thêm `long_day_threshold_h` (14h) và `drive_2week_anchor_date` | `SCR-016_SPEC.md` không nhắc 2 tham số này lần nào, trong khi `database-design.md` §3.2, BR-DRV-06, BR-DRV-10 và SCR-061 (5 lần) đều dùng → engine không có tham số để kiểm | BE-9.1.1, BE-9.1.2, FE-9.1.5 |
+| P-03 | SCR-062 §logic-12, SCR-053 §9 bước 4, SCR-060 §4 | Sửa | Đổi tuyến sau công bố đưa `routes.status = created` → tuyến **giữ `published`** khi có bản nháp; `confirm_shipment` kiểm theo `route_version` published hiện hành; SCR-060 kiểm trạng thái của **bản đang sửa** thay vì `routes.status` | Mâu thuẫn giữa 2 spec: SCR-053 chặn xuất khi tuyến không `published` (M_465) → mỗi lần sửa tuyến, kho không xuất được dù tài xế vẫn chạy bản đã công bố | BE-7.1.3, BE-8.5.2, BE-8.2.2, BE-8.2.4, FE-8.5.2 |
+| P-04 | SCR-060 §logic-11 bước 4 vs ADR-006 §3 bước 2 | Sửa | Chèn nghỉ BR-DRV-21 trong SQL `build_route_segments` → 1 module TS chuỗi lái dùng cho cả chèn nghỉ và kiểm BR-DRV-11; SQL chỉ lưu điểm nghỉ được truyền vào | Hai tài liệu đặt cùng thuật toán ở 2 nơi (SQL + TS) → dễ lệch, đúng loại lỗi PP-04 khách đang gặp | BE-9.6.1, BE-9.6.2, BE-8.2.3 |
+| P-05 | SCR-061 §9 vs SCR-062 §logic-5 bước 3.5 | Sửa | Hash đầu vào tính ở TS khi kiểm, SQL tính lại khi công bố → 1 hàm SQL `compute_compliance_input_hash` dùng chung | Hai cài đặt hash phải giống từng byte; lệch là chặn công bố oan (M_634) | BE-9.2.2, BE-9.2.3, BE-9.8.3 |
+| P-06 | SCR-063 §logic-6 item 7 | Sửa | `compliance_report_summary` là hàm SQL → service TS sau route handler | Báo cáo phải chạy engine giờ làm, mà engine là TS (ADR-006 phương án A); SQL không gọi được | BE-9.10.5 |
+| P-07 | SCR-062 §logic-5 bước 3.8 | Sửa | Không nói gì → mọi chỗ đọc `driver_duty_records route_plan` lọc `route_versions.status = 'published'` và tuyến chưa hủy | Bản `superseded` vẫn còn duty record → cộng trùng giờ kế hoạch, kể cả thẻ SCR-002 4.11 | BE-9.2.2, BE-9.8.3, BE-9.12.1 |
+| P-08 | SCR-053 §logic-10-4 | Sửa | Giờ xuất phát = `planned_arrival` depot đầu → `planned_arrival + service_min` | SCR-060 §logic-6-5 định nghĩa `planned_arrival` depot đầu là 始業, 出庫 là cộng thêm thời gian chuẩn bị | BE-7.2.1 |
+| P-09 | SCR-042 §5 item 8-2, 5.5-2, 13.9-4 | Sửa | (a) chỉ lấy lô `available/quarantine` → gồm `on_hold`; (b) GET tính lại `line_status` → tính trong RPC ghi + trigger khi hợp đồng đổi; (c) upload Storage rồi "rollback" → upload đường tạm, RPC ghi ref, job dọn file mồ côi | (a) trái state machine lô (business-rules §5); (b) đọc có tác dụng phụ; (c) Storage nằm ngoài transaction Postgres | BE-6.1.2, BE-6.4.1, BE-6.4.3, INFRA-6.6.2 |
+| P-10 | SCR-044 §8, §9 job 00:05 | Sửa | Job chỉ hết hạn theo `requested_date` → thêm `PREVIOUS_CHANGED` (so `last_delivered_expiry()` với snapshot) | BR-DATE-02 ghi rõ lý do này, spec màn bỏ sót | BE-6.6.4 |
+| P-11 | SCR-062 §logic-7 | Sửa | Hủy tuyến: "mọi đơn routed → allocated" → chặn hủy khi tuyến có đơn đã `shipped` | Spec không xử lý đơn đã xuất → trạng thái đơn sai | BE-8.5.3 |
+| P-12 | `database-design.md` §3.2–3.3 | Sửa | Chốt 1 enum: `deviation_type` theo DB; `lot_status_events.event_type` thêm `create`; `idempotency_keys` thêm `ref_id`, `request_hash`; bỏ `rest` khỏi `route_segments.segment_type`; thêm bảng `app_parameters` | Spec SCR-022/031/037/060 và DB dùng giá trị khác nhau; không có chỗ lưu `consumption_warning_days`, `lot_disposal_dual_approval_qty` | BE-1.1.2, BE-1.1.3, BE-5.1.1, BE-5.3.1, BE-8.1.1, BE-10.2.2 |
+| P-13 | SCR-015 §9 trigger | Sửa | "role service bỏ qua trigger khi seed" (không định nghĩa) → chỉ role migration, qua session var + kiểm role | Lỗ hổng bảo mật: app có thể sửa ngưỡng đã hiệu lực | BE-1.4.1, BE-3.4.1 |
+| P-14 | SCR-001 item 2-6 | Sửa | Callback không cập nhật → cập nhật `mfa_verified_at`, `last_sign_in_at` | Thẻ SCR-002 4.16 cần 2 cột này | BE-2.1.2 |
+
+Không bỏ spec nào của LAB-4.
+
+## 2. Giả định bổ sung
+
+Chỉ lấp chỗ spec/RFP để ngỏ; không ghi đè khối RFP đã nêu rõ (3 dải nhiệt, bảng BR-DRV EXTRACTED giữ nguyên giá trị).
+
+| Mã | Giả định | Chỗ spec/RFP để ngỏ | Ảnh hưởng tới issue/estimate |
+|---|---|---|---|
+| A5-01 | 1 tài xế chạy tối đa 1 tuyến/ngày; engine không gộp ca nhiều tuyến | SCR-060 §logic-6-4 (INFERRED) | BE-8.1.1 (unique index), BE-9.2.2. Nếu sai: +1 task gộp ca, ~16h |
+| A5-02 | Báo cáo tuân thủ trên dữ liệu thực tế: BR-DRV-11 dùng segment **kế hoạch** của tuyến đã chạy | SCR-063 §logic-6; `driver_duty_records` không có segment | BE-9.10.5. Đổi khi có app tài xế F06 |
+| A5-03 | Ngày đã qua chưa nhập thực tế: engine tính 0h nhưng SCR-064 đánh dấu "chưa nhập" và SCR-061 cảnh báo M_636 | SCR-061 §logic-5 bước 2.2 (0h im lặng có thể làm lọt vi phạm) | FE-9.11.3, BE-9.2.2 |
+| A5-04 | Tăng ca = ràng buộc − nghỉ giữa ca − 8h/ngày; công thức tách 1 hàm để đổi | BR §7 "Định nghĩa dùng chung", Q&A-B06 | BE-9.7.1 cộng buffer; PM-9.13.1 xin xác nhận |
+| A5-05 | Chưa kiểm điều kiện phụ của 労使協定 (số tháng được vượt 284h…); công tắc chỉ thay hạn năm/tháng | Q&A-B07, SCR-061 §logic-9 BR-DRV-14 | BE-9.7.4 cỡ S |
+| A5-06 | Phase 1 vận hành 1 trung tâm, không thêm `warehouse_id` | SCR-030 §7 (FR-INV-06) — Product B là chuỗi kho | BRSE-5.3.9 hỏi khách; nếu đa kho là thay đổi thiết kế lớn |
+| A5-07 | Mã vạch dạng `{sku_code}|{lot_code}`, parser FE tách riêng để thay | SCR-053 §logic-11-6 | FE-7.3.3 |
+| A5-08 | Trước khi có F06, tuyến dừng ở `published`; chưa làm nút chuyển `in_progress/completed` bằng tay | SCR-062 §3 | Để mở — BRSE-8.5.1; SCR-063 chỉ chọn được tuyến `published` |
+| A5-09 | Ngưỡng thẻ cảnh báo SCR-002 4.11 (`home_alert_ratio` = 0,9) là hằng số app | SCR-002 §logic-4.11 (không có chỗ lưu) | BE-9.12.1 |
+
+## 3. Hướng đã chốt
+
+| Mã | Vấn đề | Các phương án ở LAB-4 | Phương án chốt | Vì sao |
+|---|---|---|---|---|
+| D-01 | Chia backlog thế nào | README LAB-4 §5: "mục 9 + mục 10 của spec là danh sách việc" (chia theo màn) | Epic theo feature (E1–E8) + **epic riêng E9 cho giờ lái 2024**, mỗi rule BR-DRV một issue | Đề yêu cầu tách riêng hạng mục ràng buộc đặc thù; chia theo màn sẽ trộn rule vào SCR-061 thành 1 cục |
+| D-02 | Đổi tuyến sau công bố | SCR-062: tuyến về `created` · SCR-053: chỉ xuất khi `published` (2 spec ngược nhau) | Tuyến giữ `published`, bản nháp nằm ở `route_versions` (P-03) | Khớp BR "tài xế luôn nhận bản published mới nhất"; không kẹt kho |
+| D-03 | Nơi đặt thuật toán chèn nghỉ | SCR-060: SQL khi lưu · ADR-006: engine TS | Module TS duy nhất (P-04) | Một nguồn sự thật cho BR-DRV-11, unit test bảng kịch bản được |
+| D-04 | Nơi tính hash đầu vào | SCR-061: TS · SCR-062: SQL | Hàm SQL dùng chung, engine TS chỉ nhận snapshot (P-05) | `publish_route` phải tính lại trong cùng khóa dòng |
+| D-05 | Nguồn giờ làm thực tế | LAB-4 A-03: dispatcher nhập (không màn) · nạp CSV/seed · chờ app F06 | Màn mới SCR-064 (P-01) | Không có thì engine tính sai tháng/năm/nghỉ; CSV khó vận hành hằng ngày |
+| D-06 | Ai sở hữu migration dùng chung (`deviations`, `idempotency_keys`, `locations`, `suppliers`…) | Mỗi spec màn tự mô tả bảng nó dùng | Gom về E1 (BE-1.1.x), các epic sau chỉ thêm cột riêng | Tránh 2 task cùng tạo 1 bảng; xếp sprint theo phụ thuộc rõ |
+| D-07 | ADR-005 (日付逆転) và ADR-008 (kiểm nhiệt 2 lớp) còn **Proposed** | A chặn tuyệt đối / C chặn + ngoại lệ duyệt · A chặn / C 2 lớp | Làm theo phương án C của cả hai; Q&A-B03, B09 đưa vào E10 | Đổi về A chỉ là tắt quyền / đổi điều kiện, không đổi schema (ADR-005 §4) |

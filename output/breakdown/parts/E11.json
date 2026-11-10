@@ -1,0 +1,129 @@
+{
+  "id": "E11",
+  "name": "Kiểm thử tích hợp, UAT & quản lý dự án",
+  "description": "Kiểm thử xuyên màn hình theo đường đi của hàng hóa, UAT với fixture RFP R-06, vận hành sprint và phát hành Phase 1.",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S11.1",
+      "name": "Kiểm thử tích hợp luồng hàng hóa end-to-end",
+      "description": "Nhập → lô → đơn → phân bổ → lập tuyến → kiểm giờ lái → công bố → kiểm trước xuất → lịch sử giao.",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "QA-11.1.1",
+          "name": "Viết kịch bản tích hợp xuyên màn hình SCR-022→042→060→061→062→053",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Kịch bản end-to-end theo luồng architecture §5.1–5.4, gồm nhánh lỗi: lô cách ly, 日付逆転 có/không ngoại lệ, tuyến vi phạm giờ lái không công bố, đổi tuyến sau công bố vẫn xuất được.",
+          "checklist": ["Luồng chính 1 khách/1 SKU/1 tuyến", "Nhánh 日付逆転 + SCR-044", "Nhánh vi phạm giờ lái chặn công bố", "Nhánh đổi tuyến sau công bố", "Hồi quy K-01…K-08 (phần prototype đang đúng, phải giữ): 日付逆転 so lần giao gần nhất, 消費期限 chặn cứng, app_today() JST, ngưỡng nhiệt là dữ liệu, RLS mọi bảng, tự cách ly khi nhập ngoài ngưỡng"],
+          "acceptance_criteria": ["Mỗi kịch bản có dữ liệu đầu vào và kết quả mong đợi cụ thể", "Phủ đủ 4 nhánh trên", "Cả 8 mục K-01…K-08 có ca test và đạt sau khi làm xong E1–E7"],
+          "size_hint": "M",
+          "spec_refs": ["architecture §5", "system-overview §6", "prototype-vs-design-gap K-01…K-08"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "QA-11.1.2",
+          "name": "Chạy kiểm thử tích hợp trên môi trường staging và ghi lỗi",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Chạy toàn bộ kịch bản QA-11.1.1 trên staging, ghi bug thành issue có bước tái hiện, kiểm lại sau khi sửa.",
+          "checklist": ["Chuẩn bị seed staging", "Chạy và ghi kết quả từng kịch bản", "Tạo issue bug", "Retest"],
+          "acceptance_criteria": ["Báo cáo kết quả có tỉ lệ pass", "Mọi bug mức cao đã retest"],
+          "size_hint": "L",
+          "spec_refs": ["architecture §5"],
+          "special_constraint": false,
+          "depends_on": ["QA-11.1.1"]
+        }
+      ]
+    },
+    {
+      "id": "S11.2",
+      "name": "UAT với fixture RFP R-06",
+      "description": "Khách nghiệm thu bằng dữ liệu kịch bản RFP R-06 (phân bổ, giờ lái routes-and-drivers.csv).",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "QA-11.2.1",
+          "name": "Nạp fixture R-06 và đối chiếu kết quả mong đợi",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Nạp fixture R-06 (CUS-003/CHI-002, AGR-008/014, routes-and-drivers.csv) vào staging, chạy và so với kết quả mong đợi của RFP.",
+          "checklist": ["Script nạp fixture", "Chạy kịch bản phân bổ", "Chạy kịch bản giờ lái", "Bảng đối chiếu kết quả"],
+          "acceptance_criteria": ["Mọi dòng fixture có kết quả thực tế = mong đợi hoặc có issue giải thích"],
+          "size_hint": "M",
+          "spec_refs": ["ADR-004 §5", "ADR-006 §5"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BRSE-11.2.2",
+          "name": "Điều phối buổi UAT với khách và tổng hợp phản hồi",
+          "role": "brse",
+          "md": null,
+          "description": "Chuẩn bị tài liệu UAT tiếng Nhật, dẫn buổi UAT, ghi phản hồi thành issue (bug / thay đổi yêu cầu).",
+          "checklist": ["Tài liệu UAT JP", "Biên bản buổi UAT", "Phân loại phản hồi thành issue"],
+          "acceptance_criteria": ["Có biên bản UAT được khách xác nhận", "Mọi phản hồi đã thành issue có nhãn"],
+          "size_hint": "M",
+          "spec_refs": [],
+          "special_constraint": false,
+          "depends_on": ["QA-11.2.1"]
+        }
+      ]
+    },
+    {
+      "id": "S11.3",
+      "name": "Quản lý sprint, báo cáo tiến độ và phát hành Phase 1",
+      "description": "Lập kế hoạch sprint trên GitHub Project, báo cáo tiến độ cho khách, phát hành.",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "PM-11.3.1",
+          "name": "Lập kế hoạch sprint và vận hành board GitHub Project",
+          "role": "pm",
+          "md": null,
+          "description": "Chia Iteration, gán người phụ trách, theo dõi trạng thái và đường phụ thuộc (pipeline phân bổ, engine giờ lái) mỗi sprint.",
+          "checklist": ["Tạo Iteration 2 tuần", "Gán issue theo phụ thuộc", "Daily cập nhật trạng thái", "Retro cuối sprint"],
+          "acceptance_criteria": ["Mỗi issue trong sprint có người phụ trách, SWP, giờ", "Board phản ánh đúng trạng thái thực tế"],
+          "size_hint": "M",
+          "spec_refs": [],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "PM-11.3.2",
+          "name": "Viết báo cáo tiến độ sprint gửi khách (trạng thái, burndown, rủi ro)",
+          "role": "pm",
+          "md": null,
+          "description": "Báo cáo tiến độ mỗi sprint: số issue/SWP theo trạng thái, burndown, rủi ro trễ kèm hành động và người phụ trách.",
+          "checklist": ["Xuất số liệu từ Project", "Vẽ burndown", "Bảng rủi ro", "Review trước khi gửi"],
+          "acceptance_criteria": ["Báo cáo khớp số liệu trên Project", "Mỗi rủi ro có hành động + người + hạn"],
+          "size_hint": "S",
+          "spec_refs": [],
+          "special_constraint": false,
+          "depends_on": ["PM-11.3.1"]
+        },
+        {
+          "id": "INFRA-11.3.3",
+          "name": "Chuẩn bị runbook phát hành và khôi phục cho production",
+          "role": "infra",
+          "md": null,
+          "description": "Runbook deploy Vercel + migration Supabase (region Tokyo), kiểm PITR (RPO ≤ 15 phút), khôi phục ≤ 4h, cảnh báo uptime 05:00–23:00 JST.",
+          "checklist": ["Thứ tự migration + rollback", "Thử khôi phục PITR trên staging", "Cấu hình cảnh báo uptime"],
+          "acceptance_criteria": ["Runbook đã chạy thử trên staging", "Thời gian khôi phục đo được ≤ 4h"],
+          "size_hint": "M",
+          "spec_refs": ["architecture §7"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

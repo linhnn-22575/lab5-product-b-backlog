@@ -1,0 +1,321 @@
+{
+  "id": "E3",
+  "name": "F01 Master & chính sách nhiệt",
+  "description": "Master SKU (khóa trường khi đã dùng), khách hàng + hợp đồng khách–SKU có phiên bản (window_rule NULL = 未確定, không mặc định) và quản lý phiên bản ngưỡng nhiệt (SCR-010, SCR-011, SCR-015). Bảng temp_zone_policy_versions và effective_temp_policy dựng ở E1.",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S3.1",
+      "name": "Quản lý master SKU (SCR-010)",
+      "description": "admin thêm/sửa/ngưng dùng SKU; khóa code/unit/temp_zone/expiry_type/trace_lane khi SKU đã dùng; không xóa. 8 vai trò khác chỉ xem.",
+      "screen": "SCR-010",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-3.1.1",
+          "name": "Mở rộng bảng skus, seed 12 SKU và trigger khóa trường đã dùng",
+          "role": "be",
+          "md": null,
+          "description": "Migration skus thêm unit, trace_lane, updated_at, unique upper(code), backfill SKU prototype + seed 12 SKU R-02; trigger skus_guard_used_fields thay 0800 trả P0001 hint M_130, detail = danh sách cột.",
+          "checklist": ["Cột mới + unique index upper(code)", "Backfill + seed R-02", "Trigger kiểm inUse qua lots/inbound_lines/order_lines", "RLS skus_insert_admin/skus_update_admin, không DELETE"],
+          "acceptance_criteria": ["UPDATE temp_zone của SKU đã có lô trả P0001 M_130", "Tạo mã trùng khác hoa thường bị 23505"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-010 §9", "SCR-010 §7 #15", "SCR-010 §7 #18"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.2.1", "BE-1.3.2"]
+        },
+        {
+          "id": "BE-3.1.2",
+          "name": "Viết sku_list_view và API GET/POST/PATCH /api/skus",
+          "role": "be",
+          "md": null,
+          "description": "View sku_list_view (inUse, ngưỡng hiệu lực); GET /api/skus lọc q/tempZone/expiryType/status + phân trang 50; POST/PATCH zod chung, expectedUpdatedAt, map 23505/P0001/PGRST116 → M_14/M_130/M_23/M_22, audit.",
+          "checklist": ["View + GET lọc/phân trang", "Zod chung client/server, mã ^[A-Z0-9_-]+$", "Optimistic lock expectedUpdatedAt", "Trigger audit_log"],
+          "acceptance_criteria": ["PATCH với updatedAt cũ trả 409 M_22", "GET trả inUse và ngưỡng đúng phiên bản hiện hành"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-010 §9"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.1.1", "BE-1.4.2", "BE-1.5.3"]
+        },
+        {
+          "id": "FE-3.1.3",
+          "name": "Làm layout /master và trang danh sách SKU có bộ lọc, phân trang",
+          "role": "fe",
+          "md": null,
+          "description": "Layout nhóm /master/* (điều hướng theo quyền xem), trang SKU: tìm debounce, 3 bộ lọc trên query string, bảng 9 cột + badge/tooltip ngưỡng, phân trang, trạng thái loading/rỗng M_32/lỗi.",
+          "checklist": ["Điều hướng /master/* chốt 1 cách (tab hoặc menu trái)", "Bộ lọc đồng bộ URL", "Badge ngưỡng hiệu lực", "Nút thêm chỉ hiện cho admin"],
+          "acceptance_criteria": ["Vai trò chỉ xem không thấy nút thêm/sửa", "Reload trang giữ bộ lọc"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-010 item 1–9", "SCR-010 §7 #17"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.1.2", "FE-1.5.4"]
+        },
+        {
+          "id": "FE-3.1.4",
+          "name": "Làm dialog thêm/sửa SKU khóa trường theo inUse và xác nhận ngưng dùng",
+          "role": "fe",
+          "md": null,
+          "description": "Dialog thêm/sửa: zod chung, khóa trường khi inUse (ghi chú M_130), chỉ gửi trường đổi, M_31 khi hủy có thay đổi, M_22 + 再読み込み; dialog xác nhận ngưng dùng M_131.",
+          "checklist": ["Loại hạn radio không chọn sẵn", "Không đổi gì → không gọi API", "Khóa trường + ghi chú khi inUse", "Dialog M_131 khi ON→OFF"],
+          "acceptance_criteria": ["SKU đã dùng không sửa được 5 trường khóa trên UI", "Đóng dialog có thay đổi hiện xác nhận M_31"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-010 item 10–11"],
+          "special_constraint": false,
+          "depends_on": ["FE-3.1.3"]
+        },
+        {
+          "id": "QA-3.1.5",
+          "name": "Viết test case + chạy test SCR-010",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Validation từng trường, khóa khi inUse (UI + gọi API thẳng), ngưng dùng, optimistic lock, phân quyền 9 vai trò; kiểm audit_log và SKU inactive bị chặn ở SCR-022/SCR-041.",
+          "checklist": ["Ca validation + biên", "Ca khóa trường qua API thẳng", "Ca phân quyền 9 vai trò", "Bằng chứng audit_log"],
+          "acceptance_criteria": ["Mọi ca có kết quả + bằng chứng", "Lỗi log thành issue"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-010 §8", "SCR-010 §9"],
+          "special_constraint": false,
+          "depends_on": ["FE-3.1.4"]
+        }
+      ]
+    },
+    {
+      "id": "S3.2",
+      "name": "Quản lý khách hàng (SCR-011 tab 顧客)",
+      "description": "admin thêm/sửa/ngưng dùng khách hàng; mã khách readonly sau khi tạo; các vai trò khác chỉ xem.",
+      "screen": "SCR-011",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-3.2.1",
+          "name": "Mở rộng customers, seed CUS-001–005 và API GET/POST/PATCH khách hàng",
+          "role": "be",
+          "md": null,
+          "description": "Migration customers.updated_at + regex mã thống nhất Format_Code (A–Z, tự upper), seed CUS-001–005; GET/POST/PATCH /api/customers: tìm/lọc/phân trang, đếm hợp đồng active/pending, khóa mã (M_155), optimistic lock, audit.",
+          "checklist": ["Migration + seed", "GET đếm hợp đồng + badge 未確定", "PATCH chặn đổi mã (M_155), expectedUpdatedAt", "Audit before/after"],
+          "acceptance_criteria": ["PATCH đổi mã khách trả lỗi M_155", "Mã chữ thường được chuẩn hóa thành chữ hoa"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-011 §9", "SCR-011 §7 #23"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.3.2", "BE-1.5.3"]
+        },
+        {
+          "id": "FE-3.2.2",
+          "name": "Làm khung màn SCR-011 và tab 顧客 có dialog khách hàng",
+          "role": "fe",
+          "md": null,
+          "description": "Khung 2 tab đồng bộ ?tab=, giữ bộ lọc riêng từng tab; tab 顧客: tìm, gồm ngưng dùng, bảng khách (số hợp đồng + badge 未確定), dialog thêm/sửa (mã readonly khi sửa, M_31 ngưng dùng).",
+          "checklist": ["Tab đồng bộ query", "Bảng + badge 未確定", "Dialog khách + validate", "Xác nhận ngưng dùng M_31"],
+          "acceptance_criteria": ["Chuyển tab không mất bộ lọc của tab kia", "Ô mã khách bị khóa ở chế độ sửa"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-011 item 1–7"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.2.1", "FE-3.1.3"]
+        }
+      ]
+    },
+    {
+      "id": "S3.3",
+      "name": "Quản lý hợp đồng khách–SKU có phiên bản (SCR-011 tab 契約)",
+      "description": "admin/sales_manager đăng ký phiên bản hợp đồng (delivery_term, window_rule có thể NULL = 未確定, không mặc định); phiên bản áp dụng chuyển order_lines business_review ↔ open (ADR-003, ADR-004 AGREEMENT_PENDING).",
+      "screen": "SCR-011",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-3.3.1",
+          "name": "Tạo migration customer_sku_agreements, trigger khóa và dữ liệu R-04",
+          "role": "be",
+          "md": null,
+          "description": "Migration customer_sku_agreements (change_reason, created_by, UNIQUE (agreement_code, effective_from), CHECK, không DEFAULT window_rule, ràng buộc mã ↔ cặp), trigger chặn UPDATE/DELETE khi effective_from ≤ app_today(), RLS ghi chỉ qua RPC, nạp 15 hợp đồng R-04.",
+          "checklist": ["Cột + UNIQUE + CHECK, không DEFAULT", "Ràng buộc 1 mã ↔ 1 cặp khách–SKU", "Trigger khóa phiên bản đã hiệu lực", "Nạp R-04 + test count(window_rule is null)=2"],
+          "acceptance_criteria": ["UPDATE phiên bản đã hiệu lực bị trigger chặn", "Sau nạp R-04 có đúng 2 hợp đồng window_rule NULL (AGR-008/014)"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-011 §9", "SCR-011 §7 #22", "prototype-vs-design-gap G-06"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.2.1", "BE-3.1.1"]
+        },
+        {
+          "id": "BE-3.3.2",
+          "name": "Viết view phiên bản hợp đồng, API danh sách/lịch sử và hủy phiên bản",
+          "role": "be",
+          "md": null,
+          "description": "View customer_sku_agreement_versions_view (trạng thái 適用中/適用予定/適用終了, effective_to tính); GET /api/customer-sku-agreements (lọc, scope, pendingCount, heldOrderLines) + /history; RPC cancel_customer_sku_agreement_version + DELETE (chỉ tương lai, 409 M_145).",
+          "checklist": ["View + trạng thái tính lúc đọc", "GET lọc khách/SKU/rule/pending/scope", "RPC hủy chỉ phiên bản tương lai", "Audit before khi hủy"],
+          "acceptance_criteria": ["Hủy phiên bản đang áp dụng trả 409 M_145", "pendingCount khớp số hợp đồng window_rule NULL đang áp dụng"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-011 §9", "SCR-011 §7 #26"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.3.1"]
+        },
+        {
+          "id": "BE-3.3.3",
+          "name": "Viết RPC create_customer_sku_agreement_version và route POST",
+          "role": "be",
+          "md": null,
+          "description": "RPC advisory lock, kiểm khách/SKU active (M_148/M_149), effective_from (M_143/M_144), mã ↔ cặp (M_142/M_152), giống phiên bản trước (M_153), insert + audit; route POST zod bắt buộc key window_rule (thiếu → 400 M_141).",
+          "checklist": ["Advisory lock theo cặp khách–SKU", "Đủ kiểm tra M_141–M_153", "null chỉ hợp lệ khi gửi tường minh", "Lý do bắt buộc (M_06)"],
+          "acceptance_criteria": ["POST thiếu key window_rule trả 400 M_141", "Hai request đồng thời cùng ngày: một thành công, một M_144"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-011 §9", "SCR-011 item 18"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.3.1"]
+        },
+        {
+          "id": "BE-3.3.4",
+          "name": "Cập nhật order_lines khi phiên bản áp dụng và lập job 00:05 JST",
+          "role": "be",
+          "md": null,
+          "description": "Logic chuyển order_lines business_review ↔ open + trỏ agreement_id khi phiên bản áp dụng hôm nay (trong RPC) hoặc tương lai (hàm job), đăng ký pg_cron 00:05 JST, idempotent, ghi log chạy.",
+          "checklist": ["Hàm apply_agreement_versions_for_date() idempotent", "Gọi trong RPC khi effective_from = hôm nay", "cron.schedule 00:05 JST + log kết quả", "Bỏ qua dòng đã allocated (theo giả định)"],
+          "acceptance_criteria": ["Chạy job 2 lần cùng ngày không đổi kết quả", "Dòng business_review chuyển open khi phiên bản có window_rule áp dụng"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-011 item 18-14", "SCR-011 §7 #20", "SCR-011 §7 #21", "ADR-004"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.3.3", "INFRA-1.5.1"]
+        },
+        {
+          "id": "FE-3.3.5",
+          "name": "Làm tab 契約: bộ lọc, bảng hợp đồng 12 cột và panel lịch sử",
+          "role": "fe",
+          "md": null,
+          "description": "Ghi chú M_140, thanh đếm M_151, 5 bộ lọc, bảng 12 cột (badge 業務確認待ち, nền vàng 未確定, trạng thái phiên bản, link SCR-040), panel lịch sử phiên bản v1, v2… có effective_to.",
+          "checklist": ["5 bộ lọc đồng bộ URL", "Bảng + badge, không hiện giá trị đề xuất cho NULL", "Panel lịch sử", "auditor xem 全履歴"],
+          "acceptance_criteria": ["Hợp đồng NULL hiện 未確定, không có giá trị gợi ý", "Panel lịch sử hiển thị đúng thứ tự phiên bản"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-011 item 8–17"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.3.2", "FE-3.2.2"]
+        },
+        {
+          "id": "FE-3.3.6",
+          "name": "Làm dialog đăng ký phiên bản hợp đồng và hủy phiên bản",
+          "role": "fe",
+          "md": null,
+          "description": "Dialog 2 chế độ (mới / phiên bản mới), radio window_rule 4 lựa chọn không chọn sẵn, giải thích + ví dụ 18.7, xác nhận M_146 khi chọn 未確定, hiển thị M_141–M_153; hủy phiên bản tương lai M_154.",
+          "checklist": ["Radio không chọn sẵn, phiên bản mới bắt chọn lại", "Xác nhận M_146", "Map lỗi API vào field", "Dialog hủy M_154"],
+          "acceptance_criteria": ["Không gửi được form khi chưa chọn window_rule", "Chọn 未確定 luôn hiện xác nhận M_146"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-011 item 18–18.13"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.3.3", "FE-3.3.5"]
+        },
+        {
+          "id": "QA-3.3.7",
+          "name": "Viết test case + chạy test SCR-011",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Cả 2 tab: invariant window_rule NULL (không default ở UI/API/DB), phiên bản hôm nay/tương lai/trùng/giống trước, hủy, quyền admin vs sales_manager, dữ liệu R-04, side-effect order_lines + job 00:05.",
+          "checklist": ["Ca tab 顧客", "Ca phiên bản + hủy", "Ca phân quyền", "Ca side-effect order_lines + job"],
+          "acceptance_criteria": ["Mọi ca có kết quả + bằng chứng", "Lỗi log thành issue"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-011 §8", "SCR-011 §9"],
+          "special_constraint": false,
+          "depends_on": ["FE-3.3.6", "BE-3.3.4"]
+        }
+      ]
+    },
+    {
+      "id": "S3.4",
+      "name": "Quản lý phiên bản ngưỡng nhiệt (SCR-015)",
+      "description": "quality tạo/sửa/hủy phiên bản ngưỡng tương lai cho 3 dải, xem trước ảnh hưởng; phiên bản đã hiệu lực khóa (ADR-003). admin không thấy màn.",
+      "screen": "SCR-015",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-3.4.1",
+          "name": "Viết trigger khóa phiên bản ngưỡng, view lịch sử và GET /api/temp-policies",
+          "role": "be",
+          "md": null,
+          "description": "Trigger temp_policy_versions_lock_effective + trigger BEFORE INSERT/UPDATE effective_from ≥ ngày mai, RLS SELECT mọi vai trò / ghi qua RPC; view temp_zone_policy_versions_view (effective_to, state, usage_count) + GET.",
+          "checklist": ["Trigger khóa + ≥ ngày mai (bypass chỉ role migration)", "RLS SELECT mở cho mọi vai trò kể cả admin", "View usage_count từ inbound_lines/shipments/deviations", "GET + lọc dải + phân trang"],
+          "acceptance_criteria": ["UPDATE phiên bản đã hiệu lực trả 409 M_164", "GET trả 3 bản hiện hành + tương lai + lịch sử"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-015 §9", "SCR-015 §7 #30"],
+          "special_constraint": false,
+          "depends_on": ["BE-1.4.1"]
+        },
+        {
+          "id": "BE-3.4.2",
+          "name": "Viết RPC tạo, sửa, hủy phiên bản ngưỡng và các route ghi",
+          "role": "be",
+          "md": null,
+          "description": "RPC create_temp_policy_version, update_scheduled_temp_policy_version (for update, kiểm sau khóa), DELETE phiên bản tương lai; validate M_161–M_171, optimistic lock M_22/M_23, audit; POST/PATCH/DELETE /api/temp-policies.",
+          "checklist": ["min ≤ max, −50..50 1 số lẻ, 下限なし chỉ 冷凍", "Lý do 10–500, giống bản gốc → M_167", "Kiểm lại sau khi khóa dòng (qua 0:00 JST → M_164)", "Audit before/after"],
+          "acceptance_criteria": ["quality tạo được bản ngày mai; admin gọi API nhận 403", "Sửa bản đã qua 0:00 JST trả 409 M_164"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-015 §9", "SCR-015 item 8"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.4.1"]
+        },
+        {
+          "id": "BE-3.4.3",
+          "name": "Viết diffAcceptRanges và API xem trước ảnh hưởng ngưỡng mới",
+          "role": "be",
+          "md": null,
+          "description": "Hàm thuần TS diffAcceptRanges (newlyOut/newlyIn, đoạn đóng, NULL = −∞) + unit test các ca item 8-10; POST /api/temp-policies/preview + SQL đếm nhập/xuất 30 ngày.",
+          "checklist": ["Hàm thuần + unit test đủ ca biên", "SQL đếm 30 ngày (shipment có ≥1 SKU thuộc dải)", "Route preview zod", "Preview lỗi không chặn lưu"],
+          "acceptance_criteria": ["Unit test các ca item 8-10 đều pass", "Biên đúng bằng ngưỡng tính là đạt"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-015 item 8-10", "SCR-015 item 8-11", "SCR-015 §7 #31"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.4.1"]
+        },
+        {
+          "id": "FE-3.4.4",
+          "name": "Làm trang chính sách nhiệt: thẻ hiện hành, bảng tương lai và lịch sử",
+          "role": "fe",
+          "md": null,
+          "description": "Ghi chú M_160, 3 thẻ ngưỡng hiện hành (下限なし, dấu U+2212, thẻ đỏ khi thiếu bản), bảng phiên bản tương lai (chênh đỏ/xanh, sửa/hủy), bảng lịch sử + lọc dải + phân trang.",
+          "checklist": ["3 thẻ + trạng thái thiếu bản", "Bảng tương lai + diff", "Lịch sử + usage count (không link)", "Nút ghi chỉ cho quality"],
+          "acceptance_criteria": ["Dải thiếu bản hiệu lực hiện thẻ đỏ, không tự điền", "Vai trò chỉ xem không thấy nút tạo/sửa"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-015 item 1–7"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.4.1"]
+        },
+        {
+          "id": "FE-3.4.5",
+          "name": "Làm dialog tạo/sửa phiên bản ngưỡng có xem trước ảnh hưởng",
+          "role": "fe",
+          "md": null,
+          "description": "Dialog: chọn dải nạp bản gốc, 下限なし chỉ 冷凍, date picker chặn ≤ hôm nay, đếm ký tự lý do, xác nhận M_169; preview debounce 500ms, câu M_165/M_166, number line có chữ, M_168, trạng thái 計算中/lỗi.",
+          "checklist": ["Form + validate client", "Preview debounce + number line (WCAG)", "Xác nhận M_169, toast M_170", "409 M_164 → reload"],
+          "acceptance_criteria": ["Không chọn được ngày ≤ hôm nay", "Đổi ngưỡng cập nhật preview sau 500ms"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-015 item 8–8.11"],
+          "special_constraint": false,
+          "depends_on": ["BE-3.4.2", "BE-3.4.3", "FE-3.4.4"]
+        },
+        {
+          "id": "QA-3.4.6",
+          "name": "Viết test case + chạy test SCR-015",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Biên ngưỡng, NULL cận dưới, tương lai/hiệu lực/qua 0:00 JST, đua sửa, quyền quality vs admin; hồi quy giao dịch cũ giữ policy_version_id, SCR-010/SCR-022 đọc ngưỡng đúng theo ngày.",
+          "checklist": ["Ca validation + biên", "Ca khóa + đồng thời", "Ca preview", "Ca hồi quy policy_version_id"],
+          "acceptance_criteria": ["Mọi ca có kết quả + bằng chứng", "Lỗi log thành issue"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-015 §8", "SCR-015 §9"],
+          "special_constraint": false,
+          "depends_on": ["FE-3.4.5"]
+        },
+        {
+          "id": "BRSE-3.4.7",
+          "name": "Xác nhận với khách các điểm INFERRED của master SKU, hợp đồng, ngưỡng",
+          "role": "brse",
+          "md": null,
+          "description": "Gom câu hỏi SCR-010/011/015: danh sách đơn vị, tự viết hoa mã, khóa code/unit/trace_lane; effective_from = hôm nay, mẫu AGR, side-effect order_lines, ngưng khách có hợp đồng tương lai; admin xem SCR-015, 下限なし chỉ 冷凍, ngày seed, cửa sổ 30 ngày.",
+          "checklist": ["Soạn câu hỏi tiếng Nhật kèm giả định", "Gửi + theo dõi trả lời", "Cập nhật spec theo câu trả lời"],
+          "acceptance_criteria": ["Mỗi điểm có câu trả lời hoặc giả định ghi rõ", "Spec SCR-010/011/015 cập nhật"],
+          "size_hint": "S",
+          "spec_refs": ["SCR-010 §7 #16", "SCR-011 §7 #19 #20 #24", "SCR-015 §7 #27 #28 #29"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

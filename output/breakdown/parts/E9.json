@@ -1,0 +1,1170 @@
+{
+  "id": "E9",
+  "name": "★ Ràng buộc giờ lái xe tải 2024 (改善基準告示)",
+  "description": "Epic ràng buộc đặc biệt: quản lý phiên bản quy tắc giờ làm tài xế, engine TS kiểm BR-DRV-01..14 (mỗi rule 1 task), chặn công bố tuyến vi phạm, kết quả bất biến, sự cố bất khả kháng, nhập giờ làm thực tế (SCR-064 mới) và thẻ cảnh báo trang chủ. Mọi giới hạn đọc từ driver_rule_versions, không viết cứng (ADR-006).",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S9.1",
+      "name": "Quản lý phiên bản quy tắc giờ làm tài xế (SCR-016)",
+      "description": "transport_manager tạo/sửa nháp/kích hoạt/hủy phiên bản tham số giờ làm; dispatcher, auditor chỉ xem. Bổ sung 2 tham số long_day_threshold_h, drive_2week_anchor_date (G16-1, đã chốt) và seed bản 2024-04.",
+      "screen": "SCR-016",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.1.1",
+          "name": "[DRV] Tạo migration driver_rule_versions to-be, seed 2024-04 và hàm hiệu lực",
+          "role": "be",
+          "md": null,
+          "description": "Migration driver_rule_versions thêm cột metadata (source_checked_on, ext_reason, ext_evidence_ref, copied_from_id, retired_reason, *_by/*_at) và 2 tham số mới long_day_threshold_h (14), drive_2week_anchor_date (2024-04-01); seed bản 2024-04 và hàm effective_driver_rule_version(p_at).",
+          "checklist": [
+            "CHECK ext đồng bộ (2 cột ext cùng null hoặc cùng có), UNIQUE partial effective_from WHERE active",
+            "Trigger chặn UPDATE khi status <> 'draft'",
+            "Seed 2024-04 đủ 17 tham số + 2 tham số mới, ext = null",
+            "Hàm effective_driver_rule_version(p_at) + unit test SQL chọn bản theo ngày"
+          ],
+          "acceptance_criteria": [
+            "effective_driver_rule_version('2024-03-31') trả null, ('2024-04-01') trả bản 2024-04",
+            "UPDATE trực tiếp bản active bị trigger chặn",
+            "Bản seed có long_day_threshold_h = 14 và drive_2week_anchor_date = 2024-04-01"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-016 §9", "database-design §3.2", "BR §7 BR-DRV-06/10", "screens-group-b G16-1/G16-3"],
+          "special_constraint": true,
+          "depends_on": []
+        },
+        {
+          "id": "BE-9.1.2",
+          "name": "[DRV] Xây catalog tham số, hàm diff và API đọc/so sánh quy tắc",
+          "role": "be",
+          "md": null,
+          "description": "File rule-parameter-catalog.ts (nhãn JP, cột DB, đơn vị, mức, mã BR — 19 tham số gồm 2 tham số mới) + hàm diff thuần TS; API GET /api/driver-rules, GET /api/driver-rules/{id}, GET /api/driver-rules/compare; permission driver_rule:write.",
+          "checklist": [
+            "Catalog dùng chung cho SCR-016 và engine src/lib/compliance",
+            "GET list/detail tính displayState, boundPublishedRoutes",
+            "Compare dùng hàm diff chung, 400 M_189",
+            "RLS SELECT cho transport_manager/dispatcher/auditor, vai trò khác 403 M_20"
+          ],
+          "acceptance_criteria": [
+            "Compare 2 bản chỉ khác long_day_threshold_h trả đúng 1 dòng diff tham số",
+            "admin gọi GET /api/driver-rules nhận 403",
+            "Unit test hàm diff pass cho ext null → 3400"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-016 §3", "SCR-016 §9"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.1.1"]
+        },
+        {
+          "id": "BE-9.1.3",
+          "name": "[DRV] Làm RPC/API tạo nháp, sửa nháp, xóa nháp quy tắc",
+          "role": "be",
+          "md": null,
+          "description": "RPC create_driver_rule_draft(p_copy_from_id) + POST /api/driver-rules; PATCH /api/driver-rules/{id} với zod 19 tham số + superRefine quan hệ M_177/M_184/M_185; DELETE chỉ bản draft.",
+          "checklist": [
+            "Gợi ý version_code tháng sau JST + hậu tố -B/-C, regex M_14",
+            "Ràng buộc quan hệ M_177 (vd. 13h ≤ 15h, 9h ≤ 11h, 10 phút ≤ 30 phút ≤ 4h×60)",
+            "Khóa lạc quan expected_updated_at → M_22/M_183",
+            "Ghi audit_log mọi thay đổi"
+          ],
+          "acceptance_criteria": [
+            "PATCH restraint_day_std_h=16 > restraint_day_max_h=15 → 422 M_177",
+            "Bật ext nhưng thiếu ext_reason → M_184; ext 3300 ≤ thường 3300 → M_185",
+            "DELETE bản active → 409 M_178"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-016 §4", "SCR-016 §9"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.1.2"]
+        },
+        {
+          "id": "BE-9.1.4",
+          "name": "[DRV] Làm kích hoạt, hủy, ảnh hưởng tuyến và job retire quy tắc",
+          "role": "be",
+          "md": null,
+          "description": "RPC activate_driver_rule_version (FOR UPDATE + pg_advisory_xact_lock), cancel_driver_rule_version, GET /api/driver-rules/{id}/activation-impact, hàm retire_superseded_driver_rule_versions() lập lịch pg_cron 00:05 JST.",
+          "checklist": [
+            "Kích hoạt: effective_from ≥ ngày mai JST (M_179), không trùng ngày (M_180), source_note + source_checked_on (M_176), khác bản hiện hành (M_190)",
+            "Impact: đếm route_versions published/in_progress gắn bản hiện hành, số created/checked phải kiểm lại",
+            "Hủy chỉ bản 適用予定 (M_192) + lý do",
+            "Retire idempotent, cảnh báo khi job lỗi"
+          ],
+          "acceptance_criteria": [
+            "Kích hoạt với effective_from = hôm nay JST → M_179; = ngày mai → OK",
+            "2 người kích hoạt cùng ngày song song → 1 thành công, 1 nhận M_180/M_183",
+            "Kích hoạt bản mới không đổi driver_rule_version_id của tuyến đã công bố (BR-DRV-22)"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-016 §4", "SCR-016 §9", "BR §7 BR-DRV-22"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.1.2", "BE-8.1.1"]
+        },
+        {
+          "id": "FE-9.1.5",
+          "name": "[DRV] Dựng trang danh sách và form chi tiết tham số quy tắc giờ làm",
+          "role": "fe",
+          "md": null,
+          "description": "Trang /master/driver-rules: bảng phiên bản (badge trạng thái, chọn tối đa 2), banner M_175/M_191; form 5 nhóm tham số gồm 2 field mới (14h超 ngưỡng ngày dài, ngày khởi điểm khối 2 tuần) và nhóm gia hạn 労使協定.",
+          "checklist": [
+            "Cột chung: giá trị, đơn vị, badge 違反/警告, mã BR tooltip, mặc định 2024-04",
+            "Tô vàng khi khác bản nguồn (M_193), readonly khi không phải draft",
+            "Toggle 労使協定: lần đầu nạp 3400/310, OFF thì clear (M_186)",
+            "Validation client khớp zod server"
+          ],
+          "acceptance_criteria": [
+            "dispatcher mở trang thấy form readonly, không có nút sửa",
+            "Field long_day_threshold_h và drive_2week_anchor_date hiển thị và lưu được ở bản draft",
+            "Tắt toggle 労使協定 rồi lưu → 2 giới hạn ext lưu null"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-016 §2", "SCR-016 §5"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.1.2"]
+        },
+        {
+          "id": "FE-9.1.6",
+          "name": "[DRV] Làm nút thao tác, dialog kích hoạt và màn so sánh quy tắc",
+          "role": "fe",
+          "md": null,
+          "description": "Nhóm nút theo ma trận trạng thái (lưu/xóa nháp, sao chép, hủy M_187), dialog kích hoạt gọi activation-impact (M_194/M_182/M_181) và màn compare ?a=&b= (diff tham số + metadata, chỉ hiện khác biệt).",
+          "checklist": [
+            "Dialog tự lưu trước, gọi lại impact khi đổi ngày",
+            "Chặn kích hoạt khi không khác bản hiện hành (M_190), lỗi 409 hiện trong dialog",
+            "Compare đồng bộ URL, định dạng +40 / — → 3400 / 無効 → 有効",
+            "Guard rời trang khi chưa lưu (M_31)"
+          ],
+          "acceptance_criteria": [
+            "Đổi ngày hiệu lực trong dialog → số tuyến ảnh hưởng được tải lại",
+            "Compare 2 bản giống hệt với 'chỉ hiện khác biệt' → bảng rỗng + dòng tổng 0"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-016 §2", "SCR-016 §4"],
+          "special_constraint": true,
+          "depends_on": ["FE-9.1.5", "BE-9.1.3", "BE-9.1.4"]
+        },
+        {
+          "id": "QA-9.1.7",
+          "name": "[DRV] Viết test case + chạy test SCR-016",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test case ma trận validation M_177 từng cặp, biên ngày hiệu lực, vòng đời draft→active→retired, RBAC 3 vai trò + 403, BR-DRV-22 không áp ngược, so sánh, 2 tham số mới; chạy cả kịch bản đồng thời và job retire qua nửa đêm JST.",
+          "checklist": [
+            "Ma trận M_177/M_184/M_185",
+            "Kích hoạt đồng thời, sửa nháp sau khi bị kích hoạt (M_183)",
+            "Job retire 00:05 JST chuyển bản cũ sang 廃止",
+            "Ghi kết quả + bug"
+          ],
+          "acceptance_criteria": [
+            "100% test case đã chạy, bug ghi lại có bước tái hiện",
+            "Có case xác nhận tuyến đã công bố giữ bản cũ sau khi kích hoạt bản mới"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-016 §4", "SCR-016 §8"],
+          "special_constraint": true,
+          "depends_on": ["FE-9.1.6"]
+        }
+      ]
+    },
+    {
+      "id": "S9.2",
+      "name": "Khung engine kiểm giờ làm và lắp dữ liệu đầu vào",
+      "description": "Khung engine TS thuần src/lib/compliance (ADR-006 phương án A), hàm SQL chọn dữ liệu theo ngày (thực tế > kế hoạch đã công bố) dùng chung, và 1 hàm input_hash duy nhất dùng cho cả kiểm và publish_route (061 gap #10, đã chốt).",
+      "screen": "SCR-061",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.2.1",
+          "name": "[DRV] Dựng khung engine src/lib/compliance và model finding",
+          "role": "be",
+          "md": null,
+          "description": "Module TS thuần checkDriverCompliance(input, ruleVersion) → findings[]: types segment/duty day/rule version, model finding (rule_code, severity, window_start, window_end, limit_value, actual_value, detail), đơn vị giây, không đọc đồng hồ ngoài tham số.",
+          "checklist": [
+            "Mỗi rule 1 file < 200 dòng, đăng ký qua registry",
+            "Hàm tiện ích ca/ngày: 始業, 終業, 拘束, giờ lái, tuần thứ Hai, tháng JST, năm tài chính",
+            "Map tham số từ rule-parameter-catalog.ts",
+            "Bộ fixture LY2 (DRV-003, D = 2026-11-08) dùng chung cho unit test các rule"
+          ],
+          "acceptance_criteria": [
+            "Engine chạy với 0 rule đăng ký trả findings rỗng, deterministic (2 lần chạy cùng input → cùng output)",
+            "Hiển thị cắt xuống phút, so sánh bằng giây (unit test 4h00m30s > 4h)"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["ADR-006 §3", "SCR-061 §logic-5", "SCR-061 §logic-9"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.1.2"]
+        },
+        {
+          "id": "BE-9.2.2",
+          "name": "[DRV] Viết hàm SQL lắp dữ liệu đầu vào kiểm giờ làm theo ngày",
+          "role": "be",
+          "md": null,
+          "description": "Hàm select_driver_duty_days(p_driver_id, p_from, p_to, p_exclude_route_id) chọn 1 nguồn/ngày (actual_manual/actual_app > route_plan của bản published mới nhất tuyến khác, bỏ tuyến bị hủy) và get_compliance_input(p_route_version_id, p_rule_version_id) trả segments + duty days từ đầu năm tài chính → service_date + 14 ngày.",
+          "checklist": [
+            "Lọc route_versions.status = 'published' (bỏ superseded) và routes.status <> 'cancelled'",
+            "Ngày đã qua không bản ghi = 0h, trả danh sách ngày cho M_636",
+            "D+1 chưa có thực tế lẫn kế hoạch → đánh dấu 'không có dữ liệu', không coi 0h",
+            "Trừ khoảng sự cố approved chồng D−1 cho BR-DRV-09 (trả kèm overlap)"
+          ],
+          "acceptance_criteria": [
+            "Ngày có cả actual_manual và route_plan → chỉ lấy actual_manual",
+            "Bản ghi route_plan của chính tuyến đang kiểm và của bản superseded không xuất hiện",
+            "Hàm được tái dùng bởi get_driver_month_restraint (thẻ 4.11) — cùng kết quả cho cùng tháng"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-061 §logic-5", "SCR-062 §logic-7", "screens-group-d 062 gap #7"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.1.1", "BE-8.1.1"]
+        },
+        {
+          "id": "BE-9.2.3",
+          "name": "[DRV] Cài đặt hàm input_hash dùng chung cho kiểm và công bố",
+          "role": "be",
+          "md": null,
+          "description": "1 cài đặt duy nhất compute_compliance_input_hash(p_route_version_id, p_rule_version_id) trong SQL: SHA-256 (pgcrypto) của JSON chuẩn hóa {segments, id + giá trị duty record đã dùng, driver_rule_version_id} lấy từ get_compliance_input; POST compliance-checks và publish_route cùng gọi hàm này.",
+          "checklist": [
+            "Chuẩn hóa: sắp khóa, sắp mảng theo id/thời gian, số dạng cố định",
+            "Không có bản TS thứ hai tính hash",
+            "Unit test SQL: đổi 1 giá trị drive_h → hash đổi"
+          ],
+          "acceptance_criteria": [
+            "Gọi 2 lần không đổi dữ liệu → cùng hash",
+            "Thêm actual_manual cho D−1 sau khi kiểm → hash khác (dẫn tới M_634)",
+            "Đổi driver_rule_version_id → hash khác"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-061 §logic-5", "SCR-062 §logic-5", "screens-group-d 061 gap #10"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.2"]
+        }
+      ]
+    },
+    {
+      "id": "S9.3",
+      "name": "Kiểm thời gian ràng buộc theo ngày và số ngày dài trong tuần",
+      "description": "Rule BR-DRV-04/05 (拘束/ngày 13h cảnh báo, 15h vi phạm) và BR-DRV-06 (số ngày > 14h/tuần), mỗi nhóm 1 task, kèm unit test theo ví dụ SCR-061 §logic-9.",
+      "screen": "SCR-061",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.3.1",
+          "name": "[DRV] Cài rule BR-DRV-04/05 ràng buộc/ngày 13h cảnh báo, 15h vi phạm",
+          "role": "be",
+          "md": null,
+          "description": "Giới hạn restraint_day_std_h 13h (cảnh báo) / restraint_day_max_h 15h (vi phạm); ngày = 24h từ 始業, 拘束(D) = 終業 − 始業 + phần ca kế tiếp bắt đầu trước 始業 + 24h, kiểm lại D−1 khi 始業(D) < 始業(D−1) + 24h. Window 04 = [始業 + 13h, 終業], 05 = [始業 + 15h, 終業]; ra cả 2 dòng.",
+          "checklist": [
+            "Tính phần chồng sang D−1 và trả 拘束 D−1 cho BR-DRV-06",
+            "Sinh 2 finding riêng 04 và 05 khi > 15h",
+            "Unit test theo LY2 + layout 1 + ví dụ chồng ngày"
+          ],
+          "acceptance_criteria": [
+            "LY2 05:30–21:00 (15h30m) → 05 vi phạm 20:30–21:00 (+30m) và 04 cảnh báo 18:30–21:00",
+            "13h00m đúng → không cảnh báo; 13h20m → 04 cảnh báo 18:30–18:50; 15h00m đúng → chỉ 04",
+            "D−1 07:30–20:00, D bắt đầu 05:30 → 拘束 D−1 = 14h30m → 04 cảnh báo cho D−1"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-04/05", "BR §7 BR-DRV-04/05"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1"]
+        },
+        {
+          "id": "BE-9.3.2",
+          "name": "[DRV] Cài rule BR-DRV-06 số ngày ràng buộc > 14h trong tuần",
+          "role": "be",
+          "md": null,
+          "description": "Giới hạn days_over_14h_week_max 2 ngày, ngưỡng long_day_threshold_h 14h, mức cảnh báo; đếm ngày trong tuần thứ Hai–Chủ nhật chứa D có 拘束 > 14h (gồm phần chồng từ BR-DRV-04/05), cảnh báo khi D > 14h và D là ngày thứ 3 trở lên. Window = [始業 + 14h, 終業] của D.",
+          "checklist": [
+            "Đọc ngưỡng từ long_day_threshold_h (không viết cứng 14)",
+            "Dùng 拘束 ngày đã tính ở BE-9.3.1",
+            "Unit test LY2 và biên"
+          ],
+          "acceptance_criteria": [
+            "11/07 14h30m + 11/08 15h30m = 2 ngày → OK; thêm 11/04 14h20m → cảnh báo 19:30–21:00",
+            "Ngày 拘束 đúng 14h00m không được đếm",
+            "D ≤ 14h dù tuần đã có 3 ngày > 14h → không cảnh báo cho D"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-06", "BR §7 BR-DRV-06"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.3.1"]
+        }
+      ]
+    },
+    {
+      "id": "S9.4",
+      "name": "Kiểm thời gian nghỉ giữa 2 ca (休息期間)",
+      "description": "Rule BR-DRV-07 (mục tiêu 11h, cảnh báo) và BR-DRV-08 (tối thiểu 9h, vi phạm) — cùng 1 khoảng nghỉ nên 1 task, 1 dòng/khoảng nghỉ.",
+      "screen": "SCR-061",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.4.1",
+          "name": "[DRV] Cài rule BR-DRV-07/08 nghỉ giữa ca 11h cảnh báo, 9h vi phạm",
+          "role": "be",
+          "md": null,
+          "description": "Giới hạn rest_target_h 11h (cảnh báo) / rest_min_h 9h (vi phạm); nghỉ trước = 始業(D) − 終業 ca gần nhất trước, nghỉ sau = 始業 ca kế tiếp (trong 2 ngày) − 終業(D); < 9h → 08, 9h ≤ x < 11h → 07, 1 dòng/khoảng nghỉ. Window = [終業 trước, 始業 sau].",
+          "checklist": [
+            "Ca trước/sau lấy từ thực tế hoặc kế hoạch đã công bố (theo BE-9.2.2)",
+            "Không sinh dòng 07 khi đã có 08 cho cùng khoảng",
+            "Unit test LY2 + biên"
+          ],
+          "acceptance_criteria": [
+            "11/07 20:00 → 11/08 05:30 = 9h30m → 07 cảnh báo (−1h30m), không có 08",
+            "11/07 kết thúc 21:00 → 8h30m → 08 vi phạm 21:00–05:30",
+            "Đúng 11h00m → OK; đúng 9h00m → 07 cảnh báo, không vi phạm"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-07/08", "BR §7 BR-DRV-07/08"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1", "BE-9.2.2"]
+        }
+      ]
+    },
+    {
+      "id": "S9.5",
+      "name": "Kiểm giờ lái trung bình 2 ngày và 2 tuần",
+      "description": "Rule BR-DRV-09 (lái TB/ngày theo 2 ngày 9h) và BR-DRV-10 (lái TB/tuần theo khối 2 tuần cố định 44h), mỗi rule 1 task.",
+      "screen": "SCR-061",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.5.1",
+          "name": "[DRV] Cài rule BR-DRV-09 giờ lái trung bình 2 ngày 9h",
+          "role": "be",
+          "md": null,
+          "description": "Giới hạn drive_2day_avg_max_h 9h, mức vi phạm: avg1 = (D−1 + D)/2, avg2 = (D + D+1)/2, D vi phạm khi cả hai > 9h; D+1 chưa có thực tế → dùng kế hoạch đã công bố, chưa có kế hoạch → avg1 > 9h chỉ cảnh báo. Window = [đầu segment lái đầu tiên, cuối segment lái cuối cùng] của D; gồm phần BR-DRV-24 lập kế hoạch (giờ lái D−1 trừ phần chồng sự cố approved, tối đa drive_h).",
+          "checklist": [
+            "Giờ lái ngày = Σ segment drive (tuyến này) hoặc drive_h (duty record)",
+            "Không dùng max(avg1, avg2) (bản BR cũ đã bỏ)",
+            "Trừ overlap sự cố approved cho D−1, không trừ quá drive_h",
+            "Unit test LY2 + 3 nhánh D+1"
+          ],
+          "acceptance_criteria": [
+            "D−1 9h30m, D 10h25m (avg1 9h57m): D+1 kế hoạch 6h00m → OK; 8h00m → vi phạm 06:00–20:30; không có kế hoạch → cảnh báo 06:00–20:30",
+            "avg1 đúng 9h00m → không vi phạm/cảnh báo",
+            "LY2 avg1 = 8h45m, D+1 không có → OK, avg2 hiển thị 「—」"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-09", "SCR-061 §logic-9 mục 4", "BR §7 BR-DRV-09/24"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1", "BE-9.2.2"]
+        },
+        {
+          "id": "BE-9.5.2",
+          "name": "[DRV] Cài rule BR-DRV-10 giờ lái trung bình 2 tuần 44h",
+          "role": "be",
+          "md": null,
+          "description": "Giới hạn drive_2week_avg_max_h 44h, mức vi phạm; khối 2 tuần cố định thứ k = [drive_2week_anchor_date + 14k ngày, + 13 ngày] chứa D; tổng giờ lái khối (thực tế + kế hoạch đã công bố + tuyến này) / 2 > 44h → vi phạm, ngày chưa có dữ liệu = 0. Window như BR-DRV-09.",
+          "checklist": [
+            "Đọc anchor từ rule version (không viết cứng 2024-04-01)",
+            "Không dùng cửa sổ trượt",
+            "Unit test LY2 + biên khối"
+          ],
+          "acceptance_criteria": [
+            "Anchor 2024-04-01, D = 2026-11-08 → khối 10/26–11/08; LY2 (75h10m + 10h25m)/2 = 42h47m → OK",
+            "Tuần 10/26–11/01 = 46h00m → 44h32m → vi phạm",
+            "D = anchor + 14k (ngày đầu khối) không cộng giờ của khối trước; tổng đúng 88h00m → OK"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-10", "BR §7 BR-DRV-10"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1", "BE-9.2.2"]
+        }
+      ]
+    },
+    {
+      "id": "S9.6",
+      "name": "Lái liên tục 4h và tự chèn nghỉ khi lập tuyến",
+      "description": "1 module chuỗi lái dùng chung (BR-DRV-11, tham số BR-DRV-12/13) cho cả kiểm (SCR-061) và tự chèn nghỉ BR-DRV-21 ở SCR-060 (060 gap #2, đã chốt) + QA biên ADR-006 §5.",
+      "screen": "SCR-060",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.6.1",
+          "name": "[DRV] Cài module chuỗi lái và rule BR-DRV-11 lái liên tục 4h",
+          "role": "be",
+          "md": null,
+          "description": "Module drive-chain.ts dùng chung: cộng lái vào chuỗi, break ≥ break_min_segment_min (10 phút, BR-DRV-12) cộng vào nghỉ tích lũy, break < 10 phút bỏ qua, service/wait không phải nghỉ và không cắt chuỗi; nghỉ tích lũy ≥ break_min_total_min (30 phút, BR-DRV-13) → đóng chuỗi. Chuỗi có lái > continuous_drive_max_h 4h → vi phạm, window = [đầu lái đầu tiên, cuối lái cuối cùng của chuỗi] + detail thời điểm chạm 4h.",
+          "checklist": [
+            "API module trả chuỗi + mốc chạm 4h để BR-DRV-21 tái dùng",
+            "Rule BR-DRV-11 chỉ gọi module, không tự cài lại",
+            "Unit test biên ADR-006 §5 + LY2"
+          ],
+          "acceptance_criteria": [
+            "Chuỗi lái đúng 4h00m → OK; 4h01m → vi phạm",
+            "Nghỉ 9 phút không tính; 3 lần nghỉ 10 phút = 30 phút → reset; lái 2h, nghỉ 15m, lái 2h10m → vi phạm",
+            "LY2 chuỗi 08:10–12:25 (4h15m) → vi phạm 08:10–12:25, chạm 4h lúc 12:10; 荷待ち 40m không reset"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-11", "ADR-006 §3 bước 2", "ADR-006 §5", "BR §7 BR-DRV-11/12/13"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1"]
+        },
+        {
+          "id": "BE-9.6.2",
+          "name": "[DRV] Cài BR-DRV-21 tự chèn nghỉ 30 phút khi lưu tuyến SCR-060",
+          "role": "be",
+          "md": null,
+          "description": "Route handler PUT /api/routes/{id}/stops gọi module chuỗi lái (BE-9.6.1) để chèn nghỉ break_min_total_min (30 phút) ngay sau phục vụ tại điểm dừng gần nhất trước mốc 4h, lặp tới hết; truyền vị trí break đã tính cho build_route_segments (E8 BE-8.2.3) lưu segment_type = 'break', auto_inserted = true và tính lại giờ đến — SQL không cài lại thuật toán.",
+          "checklist": [
+            "Chèn được → M_616; không có điểm dừng trong chuỗi → không chèn, M_617",
+            "Rule version hiệu lực hôm nay; không có → M_635, vẫn lưu, không chèn",
+            "Nghỉ tay < 10 phút bị chặn (validate 10–180)",
+            "Hợp đồng tham số break với build_route_segments (E8), không dùng segment_type 'rest'"
+          ],
+          "acceptance_criteria": [
+            "Chuỗi 4h00m → không chèn; 4h01m → chèn 30 phút tại điểm dừng trước mốc, giờ đến các điểm sau dời 30 phút",
+            "Kết quả chèn của SCR-060 và kết quả kiểm BR-DRV-11 ở SCR-061 khớp trên cùng tuyến (không vi phạm sau khi chèn)"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-060 §logic-11", "SCR-060 item 8", "BR §7 BR-DRV-21"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.6.1", "BE-8.2.3"]
+        },
+        {
+          "id": "QA-9.6.3",
+          "name": "[DRV] Viết test case + chạy test biên lái liên tục và tự chèn nghỉ",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test BR-DRV-11/21 trên SCR-060 → SCR-061: biên 4h00/4h01, nghỉ 9 phút, 3×10 phút, không có điểm dừng M_617, thiếu rule version M_635, nghỉ tay < 10 phút bị chặn.",
+          "checklist": [
+            "Dữ liệu tuyến dựng sẵn cho từng biên",
+            "Kiểm hiển thị nghỉ tự chèn trên bảng điểm dừng và Gantt",
+            "Ghi kết quả + bug"
+          ],
+          "acceptance_criteria": [
+            "Mọi biên ADR-006 §5 có ít nhất 1 case pass/fail rõ ràng",
+            "Case xác nhận SCR-060 và SCR-061 cho cùng kết luận trên cùng tuyến"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-060 item 20", "ADR-006 §5"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.6.2"]
+        }
+      ]
+    },
+    {
+      "id": "S9.7",
+      "name": "Kiểm giới hạn tháng, năm, tăng ca và gia hạn 労使協定",
+      "description": "Rule BR-DRV-01 (tăng ca 960h), 02 (3.300h/năm), 03 (284h/tháng), 14 (công tắc gia hạn) — mỗi rule 1 task.",
+      "screen": "SCR-061",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.7.1",
+          "name": "[DRV] Cài rule BR-DRV-01 tăng ca tối đa 960h/năm tài chính",
+          "role": "be",
+          "md": null,
+          "description": "Giới hạn overtime_year_max_h 960h, mức vi phạm; tăng ca ngày = max(0, 拘束 − nghỉ giữa ca − standard_work_day_h 8h) (INFERRED Q&A-B06), Σ từ đầu năm tài chính (fiscal_year_start_month 4) tới hết D gồm tuyến này. Window = thời điểm lũy kế vượt hạn theo 'đồng hồ làm việc' (thời gian trôi trừ break, tăng ca bắt đầu khi > 8h) → 終業; đã vượt từ trước → cả ca.",
+          "checklist": [
+            "Công thức tách thành 1 hàm để đổi khi Q&A-B06 chốt",
+            "Đọc tháng bắt đầu năm tài chính từ rule version",
+            "Unit test LY2 + ví dụ 955h"
+          ],
+          "acceptance_criteria": [
+            "LY2: 512.0h + 5.5h = 517.5h → OK",
+            "Lũy kế 955.0h → window 20:30–21:00, 960.5h → vi phạm; lũy kế cuối ca đúng 960.0h → OK",
+            "Lũy kế trước ca đã 961h → window = cả ca 始業–終業"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-01", "BR §7 Định nghĩa dùng chung"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1", "BE-9.2.2"]
+        },
+        {
+          "id": "BE-9.7.2",
+          "name": "[DRV] Cài rule BR-DRV-02 thời gian ràng buộc 3.300h/năm",
+          "role": "be",
+          "md": null,
+          "description": "Giới hạn restraint_year_max_h 3.300h (hoặc ext khi BR-DRV-14 bật), mức vi phạm; Σ (終業 − 始業) mọi ca trong năm tài chính + tuyến này. Window = [始業 + (hạn − lũy kế trước tuyến), 終業].",
+          "checklist": [
+            "Lấy hạn qua hàm resolve của BR-DRV-14",
+            "Lũy kế trước tuyến lấy từ BE-9.2.2",
+            "Unit test LY2 + biên"
+          ],
+          "acceptance_criteria": [
+            "LY2: 1,712.0 + 15.5 = 1,727.5h → OK",
+            "Lũy kế 3,290.0h, ca 05:30–21:00 → vi phạm window 15:30–21:00; lũy kế 3,284.5h → tổng đúng 3,300.0h → OK"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-02", "BR §7 BR-DRV-02"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1", "BE-9.2.2"]
+        },
+        {
+          "id": "BE-9.7.3",
+          "name": "[DRV] Cài rule BR-DRV-03 thời gian ràng buộc 284h/tháng",
+          "role": "be",
+          "md": null,
+          "description": "Giới hạn restraint_month_max_h 284h (hoặc ext khi BR-DRV-14 bật), mức vi phạm; Σ 拘束 trong tháng dương lịch JST chứa D + tuyến này. Window = [始業 + (hạn − lũy kế trước tuyến), 終業]; định nghĩa tháng dùng chung với get_driver_month_restraint (thẻ 4.11).",
+          "checklist": [
+            "Tháng theo duty_date JST",
+            "Dùng cùng hàm chọn dữ liệu với thẻ SCR-002 4.11",
+            "Unit test LY2 + biên"
+          ],
+          "acceptance_criteria": [
+            "LY2: 62.5 + 15.5 = 78.0h → OK",
+            "Lũy kế 270.0h → vi phạm window 19:30–21:00 (285.5h); lũy kế 268.5h → đúng 284.0h → OK",
+            "D = ngày 1 của tháng không cộng giờ tháng trước"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-03", "BR §7 BR-DRV-03"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1", "BE-9.2.2"]
+        },
+        {
+          "id": "BE-9.7.4",
+          "name": "[DRV] Cài rule BR-DRV-14 công tắc gia hạn 労使協定 cho hạn năm/tháng",
+          "role": "be",
+          "md": null,
+          "description": "Hàm resolveRestraintLimits(ruleVersion): ext_restraint_year_max_h / ext_restraint_month_max_h khác null → thay hạn của BR-DRV-02/03 (3.400h/310h); null (bản 2024-04) → 3.300h/284h. Không kiểm điều kiện phụ của 告示 (chờ Q&A-B07).",
+          "checklist": [
+            "Hàm thuần, dùng bởi BE-9.7.2, BE-9.7.3 và thẻ 4.11",
+            "Finding ghi rõ hạn đang áp (thường/gia hạn) trong detail",
+            "Unit test 2 trạng thái"
+          ],
+          "acceptance_criteria": [
+            "ext null: tháng 285.0h → vi phạm hạn 284h",
+            "ext 310: tháng 285.0h → OK; 310.5h → vi phạm hạn 310h; năm 3,350h → OK với ext 3400"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-061 §logic-9 BR-DRV-14", "BR §7 BR-DRV-14"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.1"]
+        }
+      ]
+    },
+    {
+      "id": "S9.8",
+      "name": "Lưu kết quả kiểm bất biến, xác nhận cảnh báo và cổng công bố",
+      "description": "Lưu kết quả kiểm bất biến (BR-DRV-23), xác nhận cảnh báo có phân loại (BR-DRV-20/25), cổng tuân thủ trong publish_route gắn rule version (BR-DRV-20/22) và API chạy kiểm.",
+      "screen": "SCR-061",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.8.1",
+          "name": "[DRV] Tạo bảng kết quả kiểm, RPC save_compliance_check và trigger bất biến",
+          "role": "be",
+          "md": null,
+          "description": "Migration compliance_check_results (input_hash, route_version_id, driver_rule_version_id, violation_count, warning_count, checked_by/at) + compliance_violations (+detail jsonb); RPC save_compliance_check(p_route_version_id, p_rule_version_id, p_input_hash, p_findings) INSERT trong 1 transaction và chuyển routes created↔checked; trigger chặn UPDATE/DELETE (BR-DRV-23).",
+          "checklist": [
+            "Khóa routes FOR UPDATE trong RPC",
+            "0 vi phạm → checked; có vi phạm khi đang checked → created",
+            "Trigger bất biến trên compliance_check_results, compliance_violations",
+            "Ghi audit_log"
+          ],
+          "acceptance_criteria": [
+            "UPDATE/DELETE trực tiếp compliance_check_results bị chặn kể cả bằng service role qua SQL thường",
+            "Chạy kiểm 2 lần → 2 bản ghi, bản cũ giữ nguyên",
+            "Tuyến checked chạy lại có 1 vi phạm → routes.status = created"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-5", "SCR-061 item 15", "BR §7 BR-DRV-23"],
+          "special_constraint": true,
+          "depends_on": ["BE-8.1.1", "BE-9.1.1"]
+        },
+        {
+          "id": "BE-9.8.2",
+          "name": "[DRV] Tạo bảng và RPC/API xác nhận cảnh báo giờ làm",
+          "role": "be",
+          "md": null,
+          "description": "Migration compliance_warning_acks (check_id, violation_id, category 6 giá trị, note, acked_by/at, UNIQUE) + RPC ack_compliance_warning + POST /api/compliance-violations/{id}/acks; đây là 'phân loại + bằng chứng' cho slot vượt kế hoạch (BR-DRV-20/25).",
+          "checklist": [
+            "Chặn severity = violation (vi phạm không xác nhận cho qua)",
+            "Chặn lần kiểm không phải mới nhất và tuyến đã công bố",
+            "Bắt buộc 区分 (M_639) + 根拠メモ 10–500 (M_06); bất biến, M_638",
+            "auditor 403"
+          ],
+          "acceptance_criteria": [
+            "Ack dòng violation → 422; ack cảnh báo lần kiểm cũ → 422",
+            "Ack lần 2 cùng violation_id → 409 (UNIQUE), bản ghi đầu không đổi",
+            "Memo 9 ký tự → M_06; 10 ký tự → OK"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-8-8", "SCR-061 item 16", "BR §7 BR-DRV-20/25"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.8.1"]
+        },
+        {
+          "id": "BE-9.8.3",
+          "name": "[DRV] Làm RPC publish_route: cổng tuân thủ, gắn rule version, ghi duty record",
+          "role": "be",
+          "md": null,
+          "description": "RPC publish_route(p_route_id, p_check_id): khóa, kiểm theo thứ tự checked (M_642) → lần kiểm mới nhất & 0 vi phạm (M_631) → cảnh báo đã xác nhận (M_632) → rule version còn hiệu lực effective_driver_rule_version(app_today()) (M_633) → compute_compliance_input_hash khớp (M_634) → map > 24h (M_622); rồi gọi apply_route_publish (E8 BE-8.5.1), gắn driver_rule_version_id và INSERT driver_duty_records source=route_plan.",
+          "checklist": [
+            "Dừng ở lỗi đầu tiên, trả mã M_xxx cho FE làm mới checklist",
+            "Hash tính bằng hàm dùng chung BE-9.2.3, không cài lại",
+            "duty record route_plan: shift_start/end, drive_h, break_h từ segment",
+            "Bản mới công bố: reader lọc theo route_versions.status='published' (062 gap #7)"
+          ],
+          "acceptance_criteria": [
+            "Có 1 cảnh báo chưa xác nhận → M_632, tuyến không đổi trạng thái",
+            "Ghi actual_manual mới cho D−1 sau khi kiểm → M_634; rule version mới có hiệu lực giữa kiểm và công bố → M_633",
+            "Công bố thành công → route_versions.driver_rule_version_id = bản hiệu lực, có duty record route_plan"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-062 §logic-5", "SCR-062 item 1", "BR §7 BR-DRV-20/22/23"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.8.2", "BE-9.2.3", "BE-8.5.1"]
+        },
+        {
+          "id": "BE-9.8.4",
+          "name": "[DRV] Làm API POST compliance-checks chạy engine và lưu kết quả",
+          "role": "be",
+          "md": null,
+          "description": "POST /api/routes/{id}/compliance-checks: guard M_637 (thiếu tài xế), M_608 (thiếu điểm giao), M_635 (không rule version), M_607 (đã công bố); gọi get_compliance_input + compute_compliance_input_hash, chạy engine TS, gọi save_compliance_check.",
+          "checklist": [
+            "Chỉ dispatcher/transport_manager, tuyến created/checked",
+            "Trả M_630 + check_id mới, danh sách ngày M_636",
+            "Integration test với fixture LY2"
+          ],
+          "acceptance_criteria": [
+            "Tuyến LY2 → 2 vi phạm (05, 11) + cảnh báo (04, 07), tuyến giữ created",
+            "Tuyến chưa gán tài xế → 422 M_637, không tạo bản ghi"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-5", "SCR-061 item 18", "SCR-061 §9"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.8.1", "BE-9.3.2", "BE-9.4.1", "BE-9.5.1", "BE-9.5.2", "BE-9.6.1", "BE-9.7.1", "BE-9.7.2", "BE-9.7.3", "BE-9.7.4"]
+        }
+      ]
+    },
+    {
+      "id": "S9.9",
+      "name": "Màn timeline tài xế và vi phạm giờ làm (SCR-061)",
+      "description": "Gantt timeline D−1/D/D+1 với dải vi phạm/cảnh báo đúng khoảng giờ, bảng phát hiện + xác nhận cảnh báo, bảng phán định theo rule + lũy kế và cổng 公開へ進む.",
+      "screen": "SCR-061",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.9.1",
+          "name": "[DRV] Làm RPC get_route_timeline và API GET timeline tuyến",
+          "role": "be",
+          "md": null,
+          "description": "RPC get_route_timeline + GET /api/routes/{id}/timeline: segments D và duty D−1/D+1, danh sách lần kiểm (gồm cũ) + hash, findings + acks, lũy kế theo rule, overlay unforeseeable_events approved, cờ stale (hash hiện tại ≠ hash lần kiểm → M_634; rule version đổi → M_633).",
+          "checklist": [
+            "stale tính bằng compute_compliance_input_hash (BE-9.2.3)",
+            "auditor xem được lần kiểm cũ, chỉ đọc",
+            "Zod response, no-store"
+          ],
+          "acceptance_criteria": [
+            "Sau khi ghi thực tế D−1 mới, response trả stale = true với mã M_634",
+            "Chọn check_id cũ trả đúng findings của lần đó, không lẫn lần mới"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §9", "SCR-061 item 17", "SCR-061 §logic-6"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.8.2"]
+        },
+        {
+          "id": "FE-9.9.2",
+          "name": "[DRV] Dựng component Gantt timeline tài xế với dải vi phạm",
+          "role": "fe",
+          "md": null,
+          "description": "Gantt hàng D−1/D/D+1, trục 04–23 + vùng ngoài khung dịch vụ, màu segment, nghỉ tự chèn, dải vi phạm (đỏ nhạt viền đứt) / cảnh báo (vàng) từ window_start–window_end, đoạn đỏ đậm BR-DRV-11 từ mốc chạm 4h, dải 休息 vắt 2 hàng, overlay sự cố 「事象 EV-xxxxxx」, chú giải 8 ký hiệu.",
+          "checklist": [
+            "Dải vẽ đúng phút theo window từ API, không tự tính lại rule",
+            "Màu kèm chữ/ký hiệu (WCAG), aria-label",
+            "Wait/service hiển thị khác break"
+          ],
+          "acceptance_criteria": [
+            "Fixture LY2: dải 05 20:30–21:00, dải 11 08:10–12:25 với đỏ đậm 12:10–12:25, dải 休息 20:00 (D−1) – 05:30 (D)",
+            "Overlay sự cố approved hiện nhưng không đổi dải vi phạm"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-061 §logic-7", "SCR-061 §logic-7-4", "SCR-061 item 21"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.9.1"]
+        },
+        {
+          "id": "FE-9.9.3",
+          "name": "[DRV] Làm bảng phát hiện và dialog xác nhận cảnh báo SCR-061",
+          "role": "fe",
+          "md": null,
+          "description": "Bảng phát hiện (rule, mức, khoảng giờ, giới hạn, giá trị, chênh, diễn giải, popover gợi ý sửa) + checkbox xác nhận chỉ cho warning, dialog 区分 (6 giá trị) + 根拠メモ gọi POST acks.",
+          "checklist": [
+            "Dòng violation hiện 「—（公開不可）」",
+            "Đã xác nhận → khóa, hiện 「確認済 MM/DD HH:mm người」",
+            "Disable khi xem lần kiểm cũ / tuyến đã công bố, ẩn với auditor"
+          ],
+          "acceptance_criteria": [
+            "Thiếu 区分 → M_639, memo < 10 ký tự → M_06 ngay trên dialog",
+            "Xác nhận xong không bỏ tick được, reload vẫn khóa"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-8", "SCR-061 §logic-8-8", "SCR-061 item 22"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.9.1"]
+        },
+        {
+          "id": "FE-9.9.4",
+          "name": "[DRV] Làm header, bảng phán định theo rule và cổng 公開へ進む",
+          "role": "fe",
+          "md": null,
+          "description": "Header tuyến + nhãn rule version (link SCR-016, ghi chú không áp ngược), nút チェック実行, chọn lần kiểm cũ (chỉ đọc), banner M_633/M_634; bảng phán định 1 dòng/rule (04/05, 07/08 gộp) với lũy kế, avg1/avg2, XhYYm; nút 公開へ進む disable kèm lý do đầu tiên.",
+          "checklist": [
+            "Cổng: checked + lần kiểm mới nhất + 0 vi phạm + mọi cảnh báo đã xác nhận + hash khớp + rule version hiệu lực",
+            "Lý do disable theo thứ tự M_631/M_632/M_634/M_633",
+            "Cột 9.7 = mức nặng nhất của rule"
+          ],
+          "acceptance_criteria": [
+            "Còn 1 cảnh báo chưa xác nhận → nút disable với lý do M_632",
+            "Xem lần kiểm cũ → nút chạy kiểm và 公開へ進む disable"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-4", "SCR-061 §logic-9", "SCR-061 §logic-12"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.9.1", "BE-9.8.4"]
+        },
+        {
+          "id": "QA-9.9.5",
+          "name": "[DRV] Viết test case theo từng rule giờ làm SCR-061",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Thiết kế test case cho từng rule BR-DRV-01..14 từ ví dụ SCR-061 §logic-9 (LY2, layout 1/2) và biên ADR-006 §5, kiểm window hiển thị đúng phút trên Gantt và bảng.",
+          "checklist": [
+            "Mỗi rule ≥ 1 case OK, 1 case biên, 1 case vượt",
+            "Dữ liệu seed theo R-06 routes-and-drivers.csv",
+            "Case BR-DRV-14 bật/tắt"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case phủ 12 rule kiểm + BR-DRV-14, có giá trị mong đợi window cụ thể",
+            "Được BrSE review với ví dụ spec"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-061 §logic-9", "ADR-006 §5", "SCR-061 item 25"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.8.4"]
+        },
+        {
+          "id": "QA-9.9.6",
+          "name": "[DRV] Chạy test luồng kiểm–sửa–xác nhận–công bố với seed R-06",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Chạy bộ test QA-9.9.5 và luồng: kiểm → vi phạm → sửa → kiểm lại → checked → xác nhận → công bố; hash lệch khi ghi thực tế mới; đổi rule version; auditor xem lần kiểm cũ; seed R-06.",
+          "checklist": [
+            "Chạy trên seed R-06",
+            "Luồng M_633/M_634 và cổng SCR-062",
+            "Ghi kết quả + bug"
+          ],
+          "acceptance_criteria": [
+            "100% case đã chạy, mọi vi phạm của seed R-06 khớp giá trị mong đợi",
+            "Không công bố được tuyến còn vi phạm ở mọi đường (UI và gọi API trực tiếp)"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-061 item 26/27", "SCR-062 item 14"],
+          "special_constraint": true,
+          "depends_on": ["QA-9.9.5", "FE-9.9.2", "FE-9.9.3", "FE-9.9.4", "BE-9.8.3"]
+        }
+      ]
+    },
+    {
+      "id": "S9.10",
+      "name": "Sự cố bất khả kháng và báo cáo tuân thủ (SCR-063)",
+      "description": "Ghi/duyệt sự cố có bằng chứng (bất biến, 2 người), báo cáo tuân thủ tách lịch thường / sự cố (BR-DRV-24) + CSV, và báo cáo vượt kế hoạch cho transport_manager (BR-DRV-25).",
+      "screen": "SCR-063",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.10.1",
+          "name": "[DRV] Tạo migration unforeseeable_events và trigger bất biến",
+          "role": "be",
+          "md": null,
+          "description": "Migration unforeseeable_events (+evidence_file_path, evidence_sha256, evidence_ref_no, decision_comment, decided_at) + CHECK approved_by <> reported_by, end_at > start_at, có file hoặc số tham chiếu; trigger chỉ cho 1 lần chuyển submitted → approved|rejected (M_667).",
+          "checklist": [
+            "Giữ 1 cột evidence_ref_no (bỏ evidence_ref trùng nghĩa)",
+            "View unforeseeable_events_list_view",
+            "RLS SELECT theo vai trò"
+          ],
+          "acceptance_criteria": [
+            "UPDATE bản approved → lỗi M_667",
+            "INSERT không file và không số tham chiếu → vi phạm CHECK"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-063 §9", "SCR-063 item 1", "BR §7 sm-unforeseeable"],
+          "special_constraint": true,
+          "depends_on": ["BE-8.1.1"]
+        },
+        {
+          "id": "INFRA-9.10.2",
+          "name": "[DRV] Cấu hình bucket event-evidence và job dọn file mồ côi",
+          "role": "infra",
+          "md": null,
+          "description": "Storage bucket riêng event-evidence (private, policy theo vai trò, signed URL 5 phút) + job hằng ngày xóa file không có bản ghi unforeseeable_events.",
+          "checklist": [
+            "Giới hạn PDF/JPEG/PNG ≤ 10MB ở policy",
+            "Job lịch hằng ngày + log",
+            "Không public URL"
+          ],
+          "acceptance_criteria": [
+            "Truy cập file không có signed URL → 403",
+            "File upload nhưng tạo bản ghi thất bại bị xóa sau lần chạy job"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-063 §3", "SCR-063 item 2"],
+          "special_constraint": true,
+          "depends_on": []
+        },
+        {
+          "id": "BE-9.10.3",
+          "name": "[DRV] Làm RPC và API đăng ký sự cố bất khả kháng",
+          "role": "be",
+          "md": null,
+          "description": "RPC create_unforeseeable_event (khóa drivers FOR UPDATE, kiểm chồng ca tài xế M_662 và chồng sự cố submitted/approved M_671, outbox, audit) + POST multipart (upload trước ngoài transaction, SHA-256 server, zod, Idempotency-Key).",
+          "checklist": [
+            "Ca tài xế lấy từ thực tế hoặc route_plan bản published (lọc status='published')",
+            "Validate: bước 5 phút, không tương lai M_668, end > start M_661, ≤ 24h M_05, file/ref M_660, file M_670",
+            "Tuyến published/in_progress/completed trong 30 ngày"
+          ],
+          "acceptance_criteria": [
+            "Sự cố không chồng ca tài xế → M_662; chồng sự cố approved khác của cùng tài xế → M_671",
+            "File 10MB + 1 byte → M_670; gửi lại cùng Idempotency-Key → không tạo bản thứ 2"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-063 §logic-7", "SCR-063 item 3/4"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.10.1", "INFRA-9.10.2"]
+        },
+        {
+          "id": "BE-9.10.4",
+          "name": "[DRV] Làm RPC duyệt/từ chối và API danh sách, chi tiết sự cố",
+          "role": "be",
+          "md": null,
+          "description": "RPC decide_unforeseeable_event + POST approve/reject (FOR UPDATE, người duyệt ≠ người ghi M_665, M_22, nhận xét từ chối 10–500); GET list (lọc chồng khoảng ngày, M_13, > 366 ngày M_05) và GET detail (signed URL 5 phút, kết quả kiểm liên quan của bản đã công bố).",
+          "checklist": [
+            "Duyệt không chạy lại/sửa kết quả kiểm (BR-DRV-23)",
+            "Chỉ transport_manager duyệt",
+            "Outbox thông báo, không SMS"
+          ],
+          "acceptance_criteria": [
+            "Người ghi tự duyệt → M_665",
+            "Duyệt xong, compliance_check_results liên quan không đổi (so sánh trước/sau)"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-063 §logic-5", "SCR-063 item 5/6"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.10.1"]
+        },
+        {
+          "id": "BE-9.10.5",
+          "name": "[DRV] Làm báo cáo tuân thủ tháng tách lịch thường và sự cố (BR-DRV-24)",
+          "role": "be",
+          "md": null,
+          "description": "Service compliance_report_summary(p_month) + GET /api/compliance-reports/summary: chạy engine TS trên giờ thực tế từng tài xế-ngày, cắt khoảng sự cố approved chỉ cho BR-DRV-04/05, 09, 11 và chuyển vi phạm 3 nhóm này sang báo cáo sự cố; BR-DRV-01/02/03, 06, 07/08, 10 tính đủ; submitted/rejected không cắt.",
+          "checklist": [
+            "Dùng lại engine + select_driver_duty_days, không cài rule lần 2",
+            "BR-DRV-11 trên thực tế dùng segment kế hoạch tuyến đã chạy (giả định, 063 gap #2)",
+            "Không ghi vào compliance_check_results"
+          ],
+          "acceptance_criteria": [
+            "Vi phạm BR-DRV-05 nằm trong khoảng sự cố approved → ở báo cáo sự cố, không ở lịch thường",
+            "Vi phạm BR-DRV-08 trong khoảng sự cố approved vẫn ở lịch thường; sự cố rejected không cắt gì"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-063 §logic-6", "SCR-063 item 7", "BR §7 BR-DRV-24"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.10.4", "BE-9.8.4"]
+        },
+        {
+          "id": "BE-9.10.6",
+          "name": "[DRV] Làm xuất CSV sự cố và báo cáo vượt kế hoạch (BR-DRV-25)",
+          "role": "be",
+          "md": null,
+          "description": "GET /api/compliance-reports/events.csv (UTF-8 BOM, sự cố approved + vi phạm trong khoảng) và view over_plan_acks_view + GET /api/compliance-reports/over-plan liệt kê cảnh báo đã xác nhận theo 区分 cho transport_manager.",
+          "checklist": [
+            "CSV dùng dữ liệu của BE-9.10.5",
+            "Over-plan lọc theo tháng, tài xế, 区分",
+            "Chỉ transport_manager/auditor"
+          ],
+          "acceptance_criteria": [
+            "CSV mở bằng Excel không lỗi font tiếng Nhật (BOM)",
+            "Cảnh báo 04 đã xác nhận 区分 荷待ち xuất hiện trong over-plan với memo và người xác nhận"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-063 item 8", "SCR-061 §9", "BR §7 BR-DRV-25"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.10.5", "BE-9.8.2"]
+        },
+        {
+          "id": "FE-9.10.7",
+          "name": "[DRV] Dựng trang danh sách, chi tiết và duyệt sự cố SCR-063",
+          "role": "fe",
+          "md": null,
+          "description": "Trang SCR-063: bộ lọc (mặc định theo vai trò), bảng sự cố EV-xxxxxx, panel chi tiết + tải bằng chứng signed URL + kết quả kiểm liên quan 'không đổi', nút 承認/却下 + nhận xét (M_664).",
+          "checklist": [
+            "Ẩn duyệt với người ghi và vai trò không phải transport_manager",
+            "Signed URL hết hạn → tải lại",
+            "Trạng thái loading/lỗi"
+          ],
+          "acceptance_criteria": [
+            "Từ chối thiếu nhận xét → M_06",
+            "auditor thấy danh sách, không thấy nút duyệt"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-063 §2", "SCR-063 item 9/11"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.10.4"]
+        },
+        {
+          "id": "FE-9.10.8",
+          "name": "[DRV] Làm dialog đăng ký sự cố và khối báo cáo tuân thủ",
+          "role": "fe",
+          "md": null,
+          "description": "Dialog 事象を登録 (chọn tuyến prefill ?route_id, tài xế tự lấy, loại, datetime bước 5 phút, upload, validate client, banner bất biến, M_31) và khối tổng hợp báo cáo tuân thủ (chọn tháng, lịch thường / theo sự cố, link CSV).",
+          "checklist": [
+            "Validate client khớp server",
+            "Gửi multipart kèm Idempotency-Key",
+            "Hiển thị 2 bảng báo cáo tách biệt"
+          ],
+          "acceptance_criteria": [
+            "Mở từ SCR-061 với ?route_id → tuyến và tài xế điền sẵn",
+            "Chọn tháng → 2 bảng và link CSV đúng tháng"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-063 §2", "SCR-063 item 10/12"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.10.3", "BE-9.10.6"]
+        },
+        {
+          "id": "QA-9.10.9",
+          "name": "[DRV] Viết test case + chạy test SCR-063",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test bất biến (UPDATE trực tiếp bị chặn), duyệt 2 người, chồng ca/chồng sự cố, file sai định dạng/quá 10MB, phạm vi cắt sự cố theo từng rule (04/05, 09, 11 cắt; 01/02/03/06/07/08/10 không cắt), CSV, signed URL hết hạn.",
+          "checklist": [
+            "Ma trận rule × sự cố approved/rejected",
+            "Case báo cáo over-plan",
+            "Ghi kết quả + bug"
+          ],
+          "acceptance_criteria": [
+            "100% case đã chạy, mỗi rule có case cắt/không cắt rõ ràng",
+            "Có case xác nhận duyệt sự cố không đổi kết quả kiểm cũ"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-063 item 13/14"],
+          "special_constraint": true,
+          "depends_on": ["FE-9.10.7", "FE-9.10.8"]
+        }
+      ]
+    },
+    {
+      "id": "S9.11",
+      "name": "Nhập giờ làm thực tế của tài xế (SCR-064 乗務実績入力 — mới)",
+      "description": "Màn mới (đã chốt) cho dispatcher nhập ca/lái/nghỉ thực tế theo ngày × tài xế vào driver_duty_records source=actual_manual — lấp gap 'engine cần giờ thực tế nhưng không có màn nhập' (061 gap #1).",
+      "screen": "SCR-064",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BRSE-9.11.1",
+          "name": "[DRV] Viết spec màn SCR-064 乗務実績入力",
+          "role": "brse",
+          "md": null,
+          "description": "Viết SCR-064_SPEC.md theo khuôn spec màn: layout ngày × tài xế, field 始業/終業/lái/nghỉ, validation, phân quyền, message mới, API upsert driver_duty_records source=actual_manual và ảnh hưởng hash (M_634) tới tuyến đã kiểm.",
+          "checklist": [
+            "Theo mẫu SCR-0xx_SPEC.md (item list, logic, phân quyền, trạng thái, API)",
+            "Quy tắc sửa: ai, đến bao lâu, audit giá trị cũ",
+            "Cập nhật ADR-006 §5 và danh sách màn"
+          ],
+          "acceptance_criteria": [
+            "Spec được PM/khách review, không còn mục TBD chặn BE/FE",
+            "Có danh sách message mới đăng ký vào message-list"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["ADR-006 §5", "SCR-061 §logic-5", "_RULES quyết định 2"],
+          "special_constraint": true,
+          "depends_on": []
+        },
+        {
+          "id": "BE-9.11.2",
+          "name": "[DRV] Làm RPC/API upsert giờ làm thực tế actual_manual",
+          "role": "be",
+          "md": null,
+          "description": "RPC upsert_actual_duty_records + PUT /api/driver-duty-records (theo ngày) ghi driver_duty_records source=actual_manual: validate ca không chồng nhau trong cùng tài xế, shift_end > shift_start, drive_h + break_h ≤ độ dài ca, không ngày tương lai; audit giá trị cũ; GET danh sách theo ngày × tài xế.",
+          "checklist": [
+            "UNIQUE (driver_id, duty_date, source) cho actual_manual",
+            "Chồng với ca ngày kề (D−1 kết thúc sau 始業 D) → lỗi",
+            "Chỉ dispatcher/transport_manager ghi"
+          ],
+          "acceptance_criteria": [
+            "Ca D 05:00 trong khi ca D−1 kết thúc 06:00 → lỗi chồng ca",
+            "Lái 9h + nghỉ 2h trong ca 10h → lỗi; ghi hợp lệ làm tuyến đã kiểm liên quan thành stale (M_634)"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-064 (mới)", "database-design driver_duty_records"],
+          "special_constraint": true,
+          "depends_on": ["BRSE-9.11.1", "BE-8.1.1"]
+        },
+        {
+          "id": "FE-9.11.3",
+          "name": "[DRV] Dựng màn nhập giờ làm thực tế theo ngày × tài xế",
+          "role": "fe",
+          "md": null,
+          "description": "Màn SCR-064: chọn ngày, lưới tài xế (kế hoạch đã công bố làm gợi ý, ô 始業/終業/lái/nghỉ), lưu theo ngày, hiển thị lỗi theo dòng, đánh dấu ngày còn trống (liên quan M_636).",
+          "checklist": [
+            "Prefill từ route_plan bản published",
+            "Validate client khớp server, guard M_31",
+            "Chỉ đọc cho auditor"
+          ],
+          "acceptance_criteria": [
+            "Lưu ngày có 1 dòng lỗi → dòng đó tô đỏ, dòng khác không mất dữ liệu đã nhập",
+            "Ngày quá khứ chưa nhập được đánh dấu 'chưa nhập'"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-064 (mới)"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.11.2"]
+        },
+        {
+          "id": "QA-9.11.4",
+          "name": "[DRV] Viết test case + chạy test SCR-064",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test nhập thực tế: chồng ca, tổng lái + nghỉ vượt ca, ngày tương lai, phân quyền, audit, và tác động: kiểm lại SCR-061 dùng thực tế thay kế hoạch, hash lệch M_634.",
+          "checklist": [
+            "Case thực tế ưu tiên hơn kế hoạch trong engine",
+            "Case audit giá trị cũ",
+            "Ghi kết quả + bug"
+          ],
+          "acceptance_criteria": [
+            "100% case đã chạy",
+            "Có case BR-DRV-09 đổi kết luận sau khi nhập thực tế D−1"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-064 (mới)", "SCR-061 §logic-5"],
+          "special_constraint": true,
+          "depends_on": ["FE-9.11.3"]
+        }
+      ]
+    },
+    {
+      "id": "S9.12",
+      "name": "Thẻ cảnh báo giờ lái trên trang chủ (SCR-002 4.8/4.10/4.11)",
+      "description": "Thẻ 4.8 tuyến còn vi phạm, 4.10 sự cố chờ duyệt, 4.11 tài xế ≥ 90% 拘束時間 tháng — dùng chung hàm chọn dữ liệu và giới hạn với engine.",
+      "screen": "SCR-002",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-9.12.1",
+          "name": "[DRV] Làm get_driver_month_restraint và truy vấn thẻ 4.8/4.10/4.11",
+          "role": "be",
+          "md": null,
+          "description": "Hàm get_driver_month_restraint(p_month) dùng select_driver_duty_days (thực tế > route_plan bản published) và hạn từ rule version hiệu lực (restraint_month_max_h hoặc ext, BR-DRV-14), ngưỡng 90%, top 5; truy vấn thẻ 4.8 (latest check của route_version hiện tại có violation_count > 0) và 4.10 (sự cố submitted, loại do chính mình ghi).",
+          "checklist": [
+            "Gắn vào khung get_home_summary của epic trang chủ",
+            "Không viết cứng 284",
+            "Lọc route_versions.status='published' (062 gap #7)"
+          ],
+          "acceptance_criteria": [
+            "Tài xế 255.6h/284h (= 90%) xuất hiện ở 4.11; 255.5h không xuất hiện",
+            "Bật ext 310h → ngưỡng thành 279h; số giờ tháng khớp lũy kế BR-DRV-03 của SCR-061 cùng tài xế"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-002 §5", "SCR-002 4.8/4.10/4.11", "ADR-006 §3"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.2.2", "BE-9.7.4", "BE-9.8.1", "BE-9.10.1"]
+        },
+        {
+          "id": "FE-9.12.2",
+          "name": "[DRV] Làm thẻ 4.11 với bảng tài xế gần chạm hạn 拘束時間",
+          "role": "fe",
+          "md": null,
+          "description": "Thẻ 4.11 dùng component thẻ chung + bảng con tài xế (badge 残り, 超過, 「ほか n名」, chú thích 拘束時間 ≠ 運転時間); thẻ 4.8/4.10 cấu hình link SCR-061/SCR-063 theo quyền.",
+          "checklist": [
+            "Số 0 → xám 対応不要",
+            "Màu kèm chữ (WCAG)",
+            "Link chỉ khi vai trò được xem màn đích"
+          ],
+          "acceptance_criteria": [
+            "7 tài xế ≥ 90% → hiện 5 + 「ほか 2名」",
+            "Tài xế vượt 284h hiện badge 超過"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-002 4.11"],
+          "special_constraint": true,
+          "depends_on": ["BE-9.12.1"]
+        },
+        {
+          "id": "QA-9.12.3",
+          "name": "[DRV] Viết test case + chạy test thẻ giờ lái SCR-002",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test thẻ 4.8/4.10/4.11: 284h vs 310h ext, ngưỡng 90%, actual vs plan published, bản superseded không bị cộng, khớp số với SCR-061.",
+          "checklist": [
+            "Biên 90%",
+            "Theo vai trò thấy/không thấy thẻ",
+            "Ghi kết quả + bug"
+          ],
+          "acceptance_criteria": [
+            "100% case đã chạy",
+            "Số giờ thẻ 4.11 bằng lũy kế tháng ở SCR-061 trên cùng dữ liệu"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-002 §6"],
+          "special_constraint": true,
+          "depends_on": ["FE-9.12.2"]
+        }
+      ]
+    },
+    {
+      "id": "S9.13",
+      "name": "Xác nhận pháp lý và làm rõ Q&A giờ lái",
+      "description": "Chốt các điểm INFERRED trước khi khóa bảng BR-DRV: công thức tăng ca, phạm vi loại sự cố (OPS-LAW-01/Q&A-B06), 労使協定 (Q&A-B07), anchor date, 1 tài xế 1 tuyến/ngày, ngày trống = 0h.",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "PM-9.13.1",
+          "name": "[DRV] Lấy xác nhận pháp lý OPS-LAW-01/Q&A-B06 từ phụ trách vận tải",
+          "role": "pm",
+          "md": null,
+          "description": "Lấy xác nhận bằng văn bản của người phụ trách vận tải khách về bảng BR-DRV (giá trị seed 2024-04 so với 改善基準告示), công thức tăng ca (拘束 − nghỉ giữa ca − 8h) và phạm vi loại sự cố (chỉ 04/05, 09, 11) trước khi chốt engine.",
+          "checklist": [
+            "Gửi bảng BR-DRV + ví dụ LY2",
+            "Ghi biên bản vào Q&A-B06",
+            "Cập nhật source_checked_on cho bản seed"
+          ],
+          "acceptance_criteria": [
+            "Có câu trả lời ghi nhận cho công thức tăng ca và phạm vi sự cố",
+            "Thay đổi (nếu có) được chuyển thành issue sửa rule tương ứng"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["ADR-006 §6", "BR §7", "SCR-061 item 29"],
+          "special_constraint": true,
+          "depends_on": []
+        },
+        {
+          "id": "BRSE-9.13.2",
+          "name": "[DRV] Làm rõ Q&A-B07 労使協定, anchor date, 1 tuyến/ngày, ngày trống",
+          "role": "brse",
+          "md": null,
+          "description": "Làm rõ với khách: Q&A-B07 (có 労使協定 không, điều kiện phụ số tháng được vượt 284h), drive_2week_anchor_date thực tế, 1 tài xế tối đa 1 tuyến/ngày, ngày quá khứ không dữ liệu = 0h hay cảnh báo, xác nhận cảnh báo không chuyển sang lần kiểm mới.",
+          "checklist": [
+            "Ghi từng câu vào Q&A với phương án đề xuất",
+            "Báo PM tác động nếu 1 tài xế chạy 2 tuyến/ngày (engine phải gộp ca)",
+            "Cập nhật spec SCR-016/061 sau khi có trả lời"
+          ],
+          "acceptance_criteria": [
+            "5 câu hỏi có trạng thái trả lời/hoãn trong Q&A",
+            "Anchor date chốt được cập nhật vào bản seed hoặc bản rule mới"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-061 item 28", "SCR-060 §7 gap #1", "SCR-016 §7 G16-6/G16-7"],
+          "special_constraint": true,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

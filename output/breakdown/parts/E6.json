@@ -1,0 +1,788 @@
+{
+  "id": "E6",
+  "name": "F04 Đơn hàng & phân bổ",
+  "description": "Pipeline loại lô evaluate_lot_for_line (ADR-004, 5 lớp loại + FEFO) làm nền, rồi danh sách/đăng ký/hủy đơn (SCR-040/041), phân bổ lô (SCR-042), lịch sử giao theo khách (SCR-043) và duyệt ngoại lệ 日付逆転 (SCR-044).",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S6.1",
+      "name": "Pipeline evaluate_lot_for_line — nguồn duy nhất của BR-ALLOC-ORDER (làm trước)",
+      "description": "Hàm SQL evaluate_lot_for_line chạy 5 lớp loại (消費期限 → vùng nhiệt → cách ly → cửa sổ giao/hợp đồng → 日付逆転) rồi FEFO; refactor get_allocation_candidates và allocate_lot dùng chung, SCR-044 dùng lại khi duyệt.",
+      "screen": null,
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-6.1.1",
+          "name": "Tạo migration orders, order_lines, allocations cho luồng đơn và phân bổ",
+          "role": "be",
+          "md": null,
+          "description": "orders: customer_ref + unique (customer_id, lower(customer_ref)), created_at, cancel_reason/by/at, 6 giá trị status; order_lines: agreement_id, delivery_term, line_status; allocations: allocation_evidence jsonb, exception_request_id, status cancelled.",
+          "checklist": [
+            "Migration 1 lần dùng chung SCR-040/041/042, chạy trước mọi RPC",
+            "CHECK enum status đơn (open/partially_allocated/allocated/routed/shipped/cancelled)",
+            "line_status open/business_review/allocated",
+            "Chuyển dữ liệu prototype sang cột mới"
+          ],
+          "acceptance_criteria": [
+            "Migration chạy được trên dữ liệu prototype, không mất đơn",
+            "Insert 2 đơn cùng khách với customer_ref khác hoa/thường bị unique chặn"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-040 §6", "SCR-041 §3", "SCR-042 §3", "sm-order"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "BE-6.1.2",
+          "name": "Viết evaluate_lot_for_line lớp 1–3: 消費期限, vùng nhiệt, cách ly",
+          "role": "be",
+          "md": null,
+          "description": "Khung hàm evaluate_lot_for_line(line, lot) trả first_reason + other_reasons[]; lớp 1 EXPIRED_CONSUMPTION (expiry ≤ app_today() JST), lớp 2 TEMP_ZONE_MISMATCH (vị trí vs SKU), lớp 3 QUARANTINED (status ≠ available, gồm on_hold).",
+          "checklist": [
+            "Hợp đồng trả về: first_reason, other_reasons[], evidence jsonb",
+            "Đánh giá đủ mọi lớp để có other_reasons, không dừng ở lớp đầu",
+            "Lớp 3 bao gồm on_hold (sửa thiết kế G-1)",
+            "Unit test SQL cho từng lớp"
+          ],
+          "acceptance_criteria": [
+            "Lô 消費期限 = hôm nay JST trả EXPIRED_CONSUMPTION",
+            "Lô on_hold trả QUARANTINED; lô trượt lớp 1 và 3 có first_reason = lớp 1, other_reasons chứa lớp 3"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-042 §4", "BR-ALLOC-ORDER", "BR-EXP-01", "BR-TEMP-02", "ADR-004"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.1", "BE-5.3.1"]
+        },
+        {
+          "id": "BE-6.1.3",
+          "name": "Viết evaluate_lot_for_line lớp 4 cửa sổ giao và lớp 5 日付逆転",
+          "role": "be",
+          "md": null,
+          "description": "Lớp 4 DELIVERY_WINDOW 4 nhánh (tỉ lệ 1/3–1/2 theo BR-DELWIN-01, thiếu ngày SX, LABEL_DATE_ONLY, AGREEMENT_PENDING) + window_evidence; lớp 5 DATE_REVERSAL dùng last_delivered_expiry()/is_date_reversal() cùng khách+SKU.",
+          "checklist": [
+            "deadline = manufactured + floor(total_days/3 hoặc /2), so với requested_date",
+            "Hợp đồng hiệu lực theo effective_from ≤ requested_date (ADR-003)",
+            "Lớp 5: không có lịch sử giao → bỏ qua, không mượn lịch sử khách khác",
+            "Unit test biên floor/deadline và hạn bằng nhau"
+          ],
+          "acceptance_criteria": [
+            "requested_date = deadline đạt, deadline + 1 ngày trả DELIVERY_WINDOW",
+            "Lô hạn sớm hơn lần giao trước cho cùng khách+SKU trả DATE_REVERSAL; khách khác không bị ảnh hưởng"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-042 §4", "BR-DELWIN-01", "BR-DATE-01", "ADR-004", "ADR-005"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.2"]
+        },
+        {
+          "id": "BE-6.1.4",
+          "name": "Refactor get_allocation_candidates và API ứng viên dùng pipeline",
+          "role": "be",
+          "md": null,
+          "description": "get_allocation_candidates gọi evaluate_lot_for_line cho mọi lô của SKU (gồm on_hold), tính FEFO rank (expiry → received_at → id), pendingRequest; GET /api/orders/{id}/allocation-candidates?lineId=.",
+          "checklist": [
+            "Bỏ logic lọc riêng cũ, chỉ dùng pipeline",
+            "Trả first_reason/other_reasons/window_evidence/lần giao trước mỗi lô",
+            "Hàm chỉ đọc, không ghi (không write-on-read)"
+          ],
+          "acceptance_criteria": [
+            "Kết quả ứng viên trùng với kết quả evaluate_lot_for_line gọi trực tiếp",
+            "Lô đủ điều kiện sắp đúng FEFO rank"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-042 §3", "SCR-042 §9", "BR-FEFO-01", "ADR-004"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.3"]
+        },
+        {
+          "id": "BE-6.1.5",
+          "name": "Viết lại allocate_lot trên pipeline: khóa, đánh giá lại, bằng chứng",
+          "role": "be",
+          "md": null,
+          "description": "allocate_lot khóa orders → order_lines → lots, gọi lại evaluate_lot_for_line trên dữ liệu đã khóa, ghi allocations + allocation_evidence, inventory_movements allocate, lots.qty_allocated, exception_events (lớp 1), idempotency; bỏ p_override_reason.",
+          "checklist": [
+            "SL 1..min(残, khả dụng) (M_05/M_426/M_427), chọn lô ngoài FEFO → M_425 + fefo_skipped",
+            "Lô quá 賞味期限 cần cờ xác nhận, thiếu → 422 M_424",
+            "exception_events 1 dòng/cặp khi lớp 1 chặn",
+            "Idempotency-Key, audit_log"
+          ],
+          "acceptance_criteria": [
+            "2 phiên phân bổ cùng lô đồng thời không vượt tồn, không deadlock",
+            "Lô bị loại ở bất kỳ lớp nào không phân bổ được qua RPC dù gọi thẳng"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-042 §4", "SCR-042 §9", "BR-INV-01", "ADR-002", "ADR-004"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.3"]
+        },
+        {
+          "id": "QA-6.1.6",
+          "name": "Viết test case + chạy test ma trận thứ tự lớp loại của pipeline",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Ma trận BR-ALLOC-ORDER: mỗi first_reason, lô trượt nhiều lớp, 4 nhánh lớp 4 với biên floor/deadline, 消費期限 = hôm nay, on_hold, qua get_allocation_candidates và allocate_lot.",
+          "checklist": [
+            "Mỗi first_reason có ít nhất 1 lô dữ liệu mẫu",
+            "Lô trượt nhiều lớp: first_reason đúng thứ tự, other_reasons đủ",
+            "Biên floor/deadline 4 nhánh lớp 4",
+            "So khớp kết quả ứng viên và kết quả allocate_lot"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-042 §4", "SCR-042 §6", "BR-ALLOC-ORDER"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.4", "BE-6.1.5"]
+        },
+        {
+          "id": "BRSE-6.1.7",
+          "name": "Làm rõ với khách các điểm mở của đơn hàng, phân bổ và ngoại lệ",
+          "role": "brse",
+          "md": null,
+          "description": "Gom câu hỏi E6: Q&A-B01/B02 (ngày SX hay ngày nhập), Q&A-B16, chọn lô ngoài FEFO, pending không giữ tồn, thời điểm ghi exception_events, phân bổ sau ngày yêu cầu, ref/lý do hủy bắt buộc, mặc định lọc, thông báo kết quả duyệt.",
+          "checklist": [
+            "Soạn Q&A sheet song ngữ (JP/VN), ưu tiên Q&A-B02 vì chặn lớp 4",
+            "Kèm câu hỏi SCR-040/041/043/044 (INFERRED)",
+            "Theo dõi trả lời, cập nhật clarifications và spec"
+          ],
+          "acceptance_criteria": [
+            "Q&A-B02 có câu trả lời trước khi BE-6.1.3 hoàn tất",
+            "Mọi câu hỏi có trạng thái trả lời/giả định được chốt"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-042 §7", "SCR-040 §7", "SCR-041 §7", "SCR-044 §7"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    },
+    {
+      "id": "S6.2",
+      "name": "Danh sách đơn hàng và hủy đơn (SCR-040)",
+      "description": "Tra cứu đơn, theo dõi tiến độ phân bổ, đi tới tạo/phân bổ; hủy đơn chưa gán tuyến với đảo ngược phân bổ (BR-ORD-03).",
+      "screen": "SCR-040",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-6.2.1",
+          "name": "Tạo view order_list_view và GET /api/orders có lọc, phân trang",
+          "role": "be",
+          "md": null,
+          "description": "View order_list_view (security_invoker) gom orders, customers, order_lines, allocations active, date_reversal_exception_requests pending; GET /api/orders lọc từ khóa/khách/khoảng ngày/6 trạng thái/business_review, total.",
+          "checklist": [
+            "Từ khóa ≤ 50 (M_04), escape % và _",
+            "Mặc định từ = hôm nay − 7, 4 trạng thái còn việc",
+            "Sắp orders.id desc, phân trang 50, tiến độ phân bổ, cờ ngoại lệ chờ duyệt"
+          ],
+          "acceptance_criteria": [
+            "Từ khóa chứa % chỉ khớp ký tự % thật",
+            "Số đếm tiến độ khớp số dòng đã phân bổ"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-040 §3", "SCR-040 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.1", "BE-6.6.1"]
+        },
+        {
+          "id": "BE-6.2.2",
+          "name": "Viết RPC cancel_order đảo ngược phân bổ và POST /api/orders/{id}/cancel",
+          "role": "be",
+          "md": null,
+          "description": "cancel_order(p_order_id, p_reason): allocations → cancelled, inventory_movements unallocate, giảm lots.qty_allocated, yêu cầu 日付逆転 pending → expired ORDER_CANCELLED, ghi cancel_*, audit (BR-ORD-03).",
+          "checklist": [
+            "Chỉ open/partially_allocated/allocated; khác → 409 NOT_CANCELLABLE → M_402",
+            "Lý do 10–500 (M_06)",
+            "Khóa lots theo id tăng dần để tránh deadlock",
+            "Toàn bộ trong 1 transaction"
+          ],
+          "acceptance_criteria": [
+            "Sau hủy, qty_allocated mỗi lô giảm đúng bằng SL phân bổ, có movement unallocate tương ứng",
+            "Đơn vừa chuyển routed khi đang hủy trả M_402, không thay đổi dữ liệu"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-040 §3", "SCR-040 §4", "BR-ORD-03", "ADR-002"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.1", "BE-6.6.1"]
+        },
+        {
+          "id": "FE-6.2.3",
+          "name": "Dựng màn danh sách đơn: thanh lọc, bảng đơn và dialog hủy đơn",
+          "role": "fe",
+          "md": null,
+          "description": "Trang SCR-040 gọi GET /api/orders và POST cancel: thanh lọc đồng bộ query string, bảng 11.1–11.12 (badge trạng thái/tiến độ/business_review/ngoại lệ), phân trang 50, dialog hủy [13].",
+          "checklist": [
+            "Validation từ ngày > đến ngày (M_13), clear, giữ query khi quay lại từ SCR-042",
+            "Ngày yêu cầu quá hạn chữ đỏ + tooltip M_444; ẩn 取消 khi routed (kèm hướng dẫn gỡ tuyến)",
+            "Dialog hủy tải số phân bổ/yêu cầu mới nhất, M_400, lý do, 「取消中…」",
+            "Ẩn nút theo quyền, menu cho mọi vai trò"
+          ],
+          "acceptance_criteria": [
+            "Vai trò chỉ xem không thấy 新規受注/引当/取消",
+            "Hủy thành công thì dòng cập nhật trạng thái cancelled không cần reload tay"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-040 §2", "SCR-040 §4", "SCR-040 §7"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.2.1", "BE-6.2.2"]
+        },
+        {
+          "id": "QA-6.2.4",
+          "name": "Viết test case + chạy test SCR-040",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test lọc/phân trang/escape/biên ngày, hủy theo từng trạng thái + kiểm movement unallocate và yêu cầu expired, xung đột routed, RBAC 9 vai trò + API 403.",
+          "checklist": [
+            "Lọc, phân trang, escape ký tự đặc biệt, biên ngày",
+            "Hủy theo 6 trạng thái, kiểm movement/qty_allocated/yêu cầu expired",
+            "RBAC 9 vai trò, gọi API trực tiếp 403"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-040 §4", "SCR-040 §6", "BR-ORD-03"],
+          "special_constraint": false,
+          "depends_on": ["FE-6.2.3"]
+        }
+      ]
+    },
+    {
+      "id": "S6.3",
+      "name": "Đăng ký đơn hàng nhập tay (SCR-041)",
+      "description": "sales_planner/sales_manager/admin nhập 1 đơn với khách, ngày yêu cầu, mã tham chiếu và tối đa 50 dòng SKU, tra hợp đồng từng dòng.",
+      "screen": "SCR-041",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-6.3.1",
+          "name": "Xây API tra hợp đồng hiệu lực và kiểm trùng mã tham chiếu khách",
+          "role": "be",
+          "md": null,
+          "description": "GET /api/agreements/lookup chọn customer_sku_agreements hiệu lực (effective_from ≤ requested_date lớn nhất); GET /api/orders/check-ref kiểm trùng (customer_id, lower(customer_ref)).",
+          "checklist": [
+            "Trả window_rule, delivery_term, cờ thiếu rule / thiếu hợp đồng",
+            "check-ref không phân biệt hoa thường, khác khách được trùng",
+            "zod validate tham số, 403 theo quyền"
+          ],
+          "acceptance_criteria": [
+            "Có 2 phiên bản hợp đồng thì trả bản effective_from ≤ ngày yêu cầu lớn nhất",
+            "Ref 'ABC' và 'abc' cùng khách báo trùng"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-041 §3", "SCR-041 §4", "ADR-003"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.1"]
+        },
+        {
+          "id": "BE-6.3.2",
+          "name": "Viết lại RPC create_order và POST /api/orders với chuẩn lỗi chung",
+          "role": "be",
+          "md": null,
+          "description": "create_order: thêm sales_manager, validation đầy đủ ở SQL, hợp đồng từng dòng → line_status open/business_review, idempotency_keys, mã O-+sequence, audit; chuẩn hóa error body {code, messageId, params} dùng chung SCR-042.",
+          "checklist": [
+            "Ngày ≥ app_today() JST (M_409), 1–50 dòng (M_411), SKU không trùng (M_410), qty 1–99 999 (M_05)",
+            "Không có hợp đồng → M_405 chặn; window_rule null → business_review",
+            "Master ngưng dùng giữa chừng → M_414; ref trùng → M_408",
+            "Gửi lại cùng Idempotency-Key trả đơn cũ"
+          ],
+          "acceptance_criteria": [
+            "Đơn có 1 dòng thiếu window_rule được tạo, dòng đó line_status = business_review",
+            "Mọi lỗi trả body {code, messageId, params} đúng mã M_4xx"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-041 §3", "SCR-041 §4", "BR-ORD-01", "BR-ORD-02", "ADR-002"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.3.1"]
+        },
+        {
+          "id": "FE-6.3.3",
+          "name": "Dựng form đăng ký đơn: phần đầu và bảng dòng SKU động",
+          "role": "fe",
+          "md": null,
+          "description": "Phần đầu (khách, ngày yêu cầu với hôm nay từ server, mã tham chiếu check khi blur) và bảng dòng 6.1–6.8: thêm/xóa ≤ 50, chống trùng SKU, tra hợp đồng từng dòng, badge window_rule, điều kiện giao.",
+          "checklist": [
+            "Ref ^[0-9A-Za-z_-]{1,50}$, gọi check-ref khi blur (M_408)",
+            "Đổi khách/ngày → tra lại hợp đồng mọi dòng",
+            "Cảnh báo M_407 (thiếu rule), M_413 (đổi điều kiện giao), chặn M_405",
+            "Badge vùng/loại hạn mỗi dòng"
+          ],
+          "acceptance_criteria": [
+            "Không thêm được dòng thứ 51 và SKU trùng",
+            "Đổi ngày yêu cầu cập nhật badge hợp đồng của mọi dòng"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-041 §2", "SCR-041 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.3.1"]
+        },
+        {
+          "id": "FE-6.3.4",
+          "name": "Làm gửi form đơn: tóm tắt lỗi, Idempotency-Key, giữ form khi 401",
+          "role": "fe",
+          "md": null,
+          "description": "Tóm tắt lỗi, submit POST /api/orders với Idempotency-Key sinh khi mở form, toast M_412 → SCR-042, xác nhận rời trang M_31, lưu/khôi phục form từ sessionStorage khi 401.",
+          "checklist": [
+            "Map error body {code, messageId, params} vào dòng/field",
+            "Chống gửi 2 lần",
+            "M_31 khi rời trang có thay đổi",
+            "Khôi phục sessionStorage sau đăng nhập lại"
+          ],
+          "acceptance_criteria": [
+            "Bấm đăng ký 2 lần chỉ tạo 1 đơn",
+            "Hết phiên rồi đăng nhập lại vẫn còn dữ liệu form"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-041 §2", "SCR-041 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.3.2", "FE-6.3.3"]
+        },
+        {
+          "id": "QA-6.3.5",
+          "name": "Viết test case + chạy test SCR-041",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test 3 nhánh hợp đồng (AGR-008/AGR-014, có rule, chưa có hợp đồng), biên qty/số dòng/ref/ngày JST, gửi lại cùng key, master ngưng dùng, RBAC vào thẳng URL.",
+          "checklist": [
+            "3 nhánh hợp đồng",
+            "qty 0/1/99999/100000, 50/51 dòng, ref hoa/thường, khác khách, ngày quá khứ JST",
+            "Idempotency, master ngưng dùng giữa chừng, RBAC"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-041 §4", "SCR-041 §6"],
+          "special_constraint": false,
+          "depends_on": ["FE-6.3.4"]
+        }
+      ]
+    },
+    {
+      "id": "S6.4",
+      "name": "Phân bổ lô cho dòng đơn và gửi ngoại lệ 日付逆転 (SCR-042)",
+      "description": "Phân bổ lô theo pipeline S6.1, hủy phân bổ (đảo ngược BR-ORD-03), gửi yêu cầu ngoại lệ 日付逆転; áp sửa thiết kế G-1 (lô on_hold hiện), G-2 (không write-on-read), G-4 (upload ngoài transaction).",
+      "screen": "SCR-042",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-6.4.1",
+          "name": "Tính lại line_status và orders.status không ghi khi đọc (G-2)",
+          "role": "be",
+          "md": null,
+          "description": "Hàm recompute_order_status gọi trong allocate_lot/unallocate_allocation/cancel_order, và trigger khi customer_sku_agreements đổi để chuyển business_review ↔ open; GET không còn ghi dữ liệu.",
+          "checklist": [
+            "Đơn open → partially_allocated → allocated theo SL phân bổ",
+            "Trigger trên customer_sku_agreements cập nhật dòng business_review liên quan",
+            "Xóa đoạn tính lại trong GET /api/orders/{id}"
+          ],
+          "acceptance_criteria": [
+            "Mở SCR-042 nhiều lần không tạo bản ghi audit/UPDATE nào",
+            "Bổ sung window_rule cho hợp đồng thì dòng business_review chuyển open"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-042 §4", "SCR-042 §7 G-2", "sm-order"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.5"]
+        },
+        {
+          "id": "BE-6.4.2",
+          "name": "Viết RPC unallocate_allocation và mở rộng GET /api/orders/{id}",
+          "role": "be",
+          "md": null,
+          "description": "unallocate_allocation + POST /api/allocations/{id}/cancel (khóa, movement unallocate, giảm qty_allocated, lý do bắt buộc, audit); GET /api/orders/{id} trả today, agreement, line_status, evidence, yêu cầu ngoại lệ.",
+          "checklist": [
+            "Chỉ khi đơn partially_allocated/allocated (M_441); routed/shipped → M_430",
+            "Đảo ngược đúng phân bổ từ ngoại lệ đã duyệt (theo Q&A-B04)",
+            "Gọi recompute_order_status sau khi hủy"
+          ],
+          "acceptance_criteria": [
+            "Hủy phân bổ trả lại đúng SL khả dụng cho lô và có movement unallocate",
+            "Đơn routed gọi hủy phân bổ nhận lỗi, dữ liệu không đổi"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-042 §3", "SCR-042 §9", "BR-ORD-03", "BR-INV-02"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.5", "BE-6.4.1"]
+        },
+        {
+          "id": "BE-6.4.3",
+          "name": "Viết create_date_reversal_request với upload trước, ghi ref sau (G-4)",
+          "role": "be",
+          "md": null,
+          "description": "POST /api/date-reversal-requests multipart: upload file vào đường tạm consent-evidence trước, rồi RPC create_date_reversal_request kiểm lại DATE_REVERSAL qua evaluate_lot_for_line và ghi ref; GET /api/date-reversal-requests?orderId= dùng chung SCR-044.",
+          "checklist": [
+            "SL ≤ 残 và ≤ khả dụng (M_442), lý do 10–500, file ≤ 10MB hoặc số biên bản 1–100 (M_434/M_435)",
+            "Trùng pending → M_436; chỉ khi first_reason = DATE_REVERSAL; không tạo phân bổ",
+            "RPC lỗi → xóa file tạm; file mồ côi do job dọn",
+            "Chỉ sales_planner gửi được"
+          ],
+          "acceptance_criteria": [
+            "RPC thất bại sau upload không để lại bản ghi yêu cầu, file tạm bị xóa",
+            "Lô không bị loại ở lớp 5 gửi yêu cầu nhận lỗi"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-042 §4", "SCR-042 §7 G-4", "SCR-042 §9", "BR-DATE-02", "ADR-005"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.3", "BE-6.6.1", "INFRA-6.6.2"]
+        },
+        {
+          "id": "FE-6.4.4",
+          "name": "Dựng khung SCR-042: thông tin đơn, đầu panel dòng, bảng phân bổ đã có",
+          "role": "fe",
+          "md": null,
+          "description": "Header + badge đơn, thông tin đơn (基準日 từ server, 要求日超過), chú giải ①–⑥, đầu panel mỗi dòng + banner business_review, bảng phân bổ 11.1–11.6 + dialog hủy phân bổ [15].",
+          "checklist": [
+            "Chế độ chỉ xem theo vai trò và trạng thái routed/shipped/cancelled (M_430)",
+            "Banner business_review link SCR-011 theo quyền, ẩn chọn/phân bổ",
+            "Dialog hủy phân bổ lý do bắt buộc, xem chi tiết bằng chứng",
+            "404 M_23, xung đột M_22 + tự tải lại"
+          ],
+          "acceptance_criteria": [
+            "Đơn routed hiển thị chỉ xem, không có nút hủy phân bổ",
+            "Dòng business_review không có ô chọn lô kể cả với admin"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-042 §2", "SCR-042 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.4.2"]
+        },
+        {
+          "id": "FE-6.4.5",
+          "name": "Dựng bảng lô ứng viên 8.1–8.12 có badge lý do loại và lô on_hold",
+          "role": "fe",
+          "md": null,
+          "description": "Bảng ứng viên từ GET allocation-candidates: hạn/ngày còn, SX/nhập, vị trí, trạng thái (badge 保留 cho on_hold — G-1), khả dụng, lần giao trước + link 納品履歴を見る, bằng chứng cửa sổ, badge first_reason + tooltip other_reasons.",
+          "checklist": [
+            "Badge ①–⑥ theo first_reason, tooltip other_reasons",
+            "Checkbox hiện lô bị loại (lưu localStorage)",
+            "Link 「納品履歴を見る」 mở SCR-043 với khách + SKU (G-12)",
+            "Ẩn bảng khi dòng allocated"
+          ],
+          "acceptance_criteria": [
+            "Lô on_hold hiện khi bật checkbox, badge 保留 và lý do ③",
+            "Lô bị loại bởi nhiều lớp hiện badge lớp đầu, tooltip liệt kê các lớp còn lại"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-042 §2", "SCR-042 §4", "SCR-042 §7 G-1"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.4", "FE-6.4.4"]
+        },
+        {
+          "id": "FE-6.4.6",
+          "name": "Làm form phân bổ lô và dialog xác nhận lô quá 賞味期限",
+          "role": "fe",
+          "md": null,
+          "description": "Radio chọn lô (mặc định FEFO), nhập SL, cảnh báo M_425 khi chọn ngoài FEFO, dialog [14] xác nhận lô quá 賞味期限, gửi POST /api/allocations với Idempotency-Key, tải lại mọi panel.",
+          "checklist": [
+            "SL 1..min(残, khả dụng), map M_05/M_426/M_427",
+            "Dialog 賞味期限 gửi cờ xác nhận (tránh M_424)",
+            "Idempotency-Key, chống gửi 2 lần",
+            "Tải lại tất cả panel sau thành công/xung đột"
+          ],
+          "acceptance_criteria": [
+            "Chọn lô không phải FEFO hiện M_425 trước khi gửi",
+            "Phân bổ thành công cập nhật SL đã phân bổ/còn và trạng thái đơn"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-042 §2", "SCR-042 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.5", "FE-6.4.5"]
+        },
+        {
+          "id": "FE-6.4.7",
+          "name": "Dựng bảng yêu cầu ngoại lệ và dialog gửi ngoại lệ 日付逆転",
+          "role": "fe",
+          "md": null,
+          "description": "Bảng 12.1–12.5 từ GET /api/date-reversal-requests?orderId= và dialog [13] gửi ngoại lệ: khối so sánh hạn, trục ngày, SL, lý do, bằng chứng file hoặc số biên bản, gửi multipart.",
+          "checklist": [
+            "Nút ngoại lệ chỉ khi first_reason = DATE_REVERSAL và vai trò sales_planner",
+            "Validation M_442/M_434/M_435, trùng pending M_436",
+            "Hiển thị DRX-xxxxxx, trạng thái pending/approved/rejected/expired + expire_reason"
+          ],
+          "acceptance_criteria": [
+            "sales_manager/admin không thấy nút gửi ngoại lệ",
+            "Gửi thành công thêm 1 dòng pending vào bảng, không tạo phân bổ"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-042 §2", "SCR-042 §4", "ADR-005"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.4.3", "FE-6.4.5"]
+        },
+        {
+          "id": "QA-6.4.8",
+          "name": "Viết test case + chạy test SCR-042 (日付逆転, đồng thời, RBAC)",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test 日付逆転 (chặn, gửi yêu cầu, chưa có lịch sử, hạn bằng nhau, không mượn lịch sử CUS-003/CUS-004), đồng thời 2 người phân bổ, idempotency, hủy phân bổ, RBAC và chế độ chỉ xem.",
+          "checklist": [
+            "日付逆転: các case CUS-003/CUS-004, upload lỗi không để lại yêu cầu",
+            "Đồng thời 2 người phân bổ cùng lô, idempotency",
+            "Hủy phân bổ + trạng thái đơn, lô on_hold hiển thị",
+            "RBAC + đơn routed/shipped/cancelled chỉ xem"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-042 §4", "SCR-042 §6"],
+          "special_constraint": false,
+          "depends_on": ["FE-6.4.6", "FE-6.4.7", "QA-6.1.6"]
+        }
+      ]
+    },
+    {
+      "id": "S6.5",
+      "name": "Lịch sử giao theo khách (SCR-043)",
+      "description": "Tra cứu lịch sử giao theo cặp khách–SKU, đánh dấu dòng mốc so sánh 日付逆転 (nguồn BR-DATE-01). Chỉ đọc.",
+      "screen": "SCR-043",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-6.5.1",
+          "name": "Sửa delivery_history_list_view và GET /api/delivery-history, includeInactive",
+          "role": "be",
+          "md": null,
+          "description": "View delivery_history_list_view trên delivery_history_ranked (lot_id, sku_expiry_type, is_migrated; cờ mốc tính trên toàn lịch sử) + index (delivered_at desc, id desc); GET /api/delivery-history; thêm includeInactive cho /api/customers, /api/skus.",
+          "checklist": [
+            "Lọc ngày/mã lô ở ngoài window để không đẩy filter vào (cờ mốc không đổi)",
+            "Khoảng ngày JST, mã lô khớp phần đầu không phân biệt hoa thường, 50/trang, count cắt 501, no-store",
+            "includeInactive mặc định false, không đổi hành vi màn khác"
+          ],
+          "acceptance_criteria": [
+            "Lọc ngày cũ + chỉ dòng mốc có thể trả 0 dòng (cờ mốc vẫn theo toàn lịch sử)",
+            "Các màn đang gọi /api/customers, /api/skus không đổi kết quả khi không truyền includeInactive"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-043 §3", "SCR-043 §4", "BR-DATE-01", "DR-HIST-01"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "FE-6.5.2",
+          "name": "Dựng màn lịch sử giao: thanh lọc combobox và bảng có badge mốc",
+          "role": "fe",
+          "md": null,
+          "description": "Thanh lọc (khách, SKU gồm 「（無効）」, mã lô, ngày giao, chỉ dòng mốc) nhận/ghi URL; bảng 12.1–12.8 có badge 日付逆転比較基準/移行データ, link SCR-031/SCR-053, phân trang, 500件以上 + M_462.",
+          "checklist": [
+            "Lần đầu tự tìm theo URL; đổi combobox không tự tìm",
+            "Từ > đến → M_461 không gọi API; mã lô M_13/M_04",
+            "Dòng 移行データ không link + M_463; shipment_id null → 「—」",
+            "Skeleton, M_32, M_40 + correlation_id/M_41 + 再試行"
+          ],
+          "acceptance_criteria": [
+            "Mở URL từ link SCR-042 hiển thị sẵn kết quả theo khách + SKU",
+            "Kết quả > 500 dòng hiện 500件以上 và M_462"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-043 §2", "SCR-043 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.5.1"]
+        },
+        {
+          "id": "QA-6.5.3",
+          "name": "Viết test case + chạy test SCR-043",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test cờ mốc (trùng delivered_at, 1 lần xuất nhiều lô, lọc ngày + chỉ mốc), biên ngày JST, giới hạn 500, 移行データ, RBAC chỉ đọc + RLS chặn ghi delivery_history, hồi quy /api/customers, /api/skus.",
+          "checklist": [
+            "Cờ mốc các case trùng thời điểm, nhiều lô",
+            "Biên ngày JST, giới hạn 500, dòng 移行データ",
+            "RLS chặn ghi delivery_history; hồi quy màn dùng /api/customers, /api/skus"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-043 §4", "SCR-043 §6", "SCR-043 §7"],
+          "special_constraint": false,
+          "depends_on": ["FE-6.5.2"]
+        }
+      ]
+    },
+    {
+      "id": "S6.6",
+      "name": "Duyệt ngoại lệ 日付逆転 (SCR-044)",
+      "description": "sales_manager duyệt/từ chối yêu cầu 日付逆転; duyệt thì kiểm lại qua evaluate_lot_for_line + SL rồi tự phân bổ; job 00:05 JST hết hạn yêu cầu (gồm PREVIOUS_CHANGED).",
+      "screen": "SCR-044",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-6.6.1",
+          "name": "Tạo migration date_reversal_exception_requests, chuyển dữ liệu cũ, RBAC",
+          "role": "be",
+          "md": null,
+          "description": "Bảng date_reversal_exception_requests (requested_at, decided_at, expire_reason, previous_delivery_history_id, snapshot hạn trước, allocation_id, is_legacy; CHECK decided_by <> requested_by; UNIQUE partial pending), chuyển date_reversal_overrides → legacy approved; vai trò sales_manager + date_reversal:approve/request + RLS 4 vai trò.",
+          "checklist": [
+            "State machine pending → approved | rejected | expired bằng CHECK",
+            "Chuyển dữ liệu overrides: is_legacy, approved, decided_by null, rồi bỏ bảng cũ",
+            "role-permissions.ts thêm sales_manager và 2 permission",
+            "RLS SELECT cho sales_manager, sales_planner, quality, auditor"
+          ],
+          "acceptance_criteria": [
+            "Không tạo được 2 yêu cầu pending cho cùng dòng đơn + lô",
+            "Dữ liệu date_reversal_overrides cũ xuất hiện dưới dạng yêu cầu legacy approved"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-044 §3", "SCR-044 §6", "SCR-042 §6", "ADR-005"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.1"]
+        },
+        {
+          "id": "INFRA-6.6.2",
+          "name": "Tạo bucket consent-evidence riêng tư và policy, dọn file tạm mồ côi",
+          "role": "infra",
+          "md": null,
+          "description": "Bucket Storage consent-evidence private + storage policy (chỉ server ghi), đường tạm cho upload trước RPC (G-4), mở rộng job dọn file mồ côi sang bucket này.",
+          "checklist": [
+            "Bucket private, đường {yyyy}/{uuid}, thư mục tạm",
+            "Policy: chỉ service role ghi/đọc, người dùng chỉ xem qua signed URL 5 phút",
+            "Job dọn file tạm > 24h không có yêu cầu tham chiếu"
+          ],
+          "acceptance_criteria": [
+            "File bằng chứng không truy cập được qua URL công khai",
+            "File tạm mồ côi > 24h bị xóa"
+          ],
+          "size_hint": "S",
+          "spec_refs": ["SCR-044 §6", "SCR-042 §7 G-4"],
+          "special_constraint": false,
+          "depends_on": ["INFRA-5.2.3"]
+        },
+        {
+          "id": "BE-6.6.3",
+          "name": "Viết RPC approve/reject_date_reversal_request có kiểm lại và tự phân bổ",
+          "role": "be",
+          "md": null,
+          "description": "approve_date_reversal_request khóa yêu cầu → orders → order_lines → lots, kiểm lại lớp 1–4 qua evaluate_lot_for_line + SL, 6 nhánh expire (commit expired, trả result 'expired'), nếu đạt thì phân bổ như allocate_lot, exception_events, audit; reject_date_reversal_request với nhận xét 10–500.",
+          "checklist": [
+            "expire_reason: RULE_FAILED:<code>, PREVIOUS_CHANGED, QTY_INSUFFICIENT, ORDER_CANCELLED, REQUESTED_DATE_PASSED, ORDER_NOT_ALLOCATABLE",
+            "Người duyệt ≠ người gửi (M_448), đã xử lý → M_450",
+            "Tạo allocations với exception_request_id + allocation_evidence, movement allocate",
+            "reject: nhận xét bắt buộc 10–500 (M_06)"
+          ],
+          "acceptance_criteria": [
+            "Duyệt khi lô vừa bị cách ly trả HTTP 200 result 'expired' với RULE_FAILED:QUARANTINED, không phân bổ",
+            "2 manager duyệt cùng lúc: chỉ 1 thành công, người kia nhận M_450"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-044 §4", "SCR-044 §6", "BR-DATE-02", "BR-ALLOC-ORDER", "ADR-002", "ADR-005"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.1.3", "BE-6.1.5", "BE-6.6.1"]
+        },
+        {
+          "id": "BE-6.6.4",
+          "name": "Viết job expire_date_reversal_requests 00:05 JST gồm PREVIOUS_CHANGED",
+          "role": "be",
+          "md": null,
+          "description": "pg_cron expire_date_reversal_requests() 00:05 JST, lô 500: hết hạn yêu cầu pending khi requested_date đã qua (REQUESTED_DATE_PASSED) hoặc last_delivered_expiry() khác snapshot lúc gửi (PREVIOUS_CHANGED, sửa thiết kế theo BR-DATE-02).",
+          "checklist": [
+            "Lịch pg_cron theo JST, xử lý theo lô 500, idempotent khi chạy lại",
+            "So last_delivered_expiry() với snapshot previous_delivery_history_id",
+            "Ghi audit_log mỗi yêu cầu expired"
+          ],
+          "acceptance_criteria": [
+            "Có lần giao mới cho cùng khách+SKU sau khi gửi thì job chuyển yêu cầu sang expired PREVIOUS_CHANGED",
+            "Chạy job 2 lần liên tiếp không tạo thay đổi thừa"
+          ],
+          "size_hint": "M",
+          "spec_refs": ["SCR-044 §4", "SCR-044 §7 #2", "BR-DATE-02"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.6.1", "BE-6.1.3"]
+        },
+        {
+          "id": "BE-6.6.5",
+          "name": "Xây API danh sách, chi tiết + kiểm lại, bằng chứng, duyệt/từ chối SCR-044",
+          "role": "be",
+          "md": null,
+          "description": "GET list (zod, counts theo 5 tab, sort, paging 50), GET detail + recheck (evaluate_lot_for_line, SL, currentPreviousExpiry) + history từ audit_log, GET evidence (302 signed URL 5 phút, audit evidence_viewed), POST approve/reject map 409 SELF_DECISION/ALREADY_DECIDED.",
+          "checklist": [
+            "Tab 申請中 bỏ qua lọc ngày, mặc định −30 ngày",
+            "recheck chỉ đọc, dùng đúng pipeline như RPC duyệt",
+            "Map 403/409 sang M_xx"
+          ],
+          "acceptance_criteria": [
+            "Kết quả recheck trùng với kết quả RPC duyệt khi dữ liệu không đổi",
+            "Mỗi lần xem bằng chứng ghi 1 dòng audit evidence_viewed"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-044 §3", "SCR-044 §6", "SCR-044 §9"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.6.3", "BE-6.1.3", "INFRA-6.6.2"]
+        },
+        {
+          "id": "FE-6.6.6",
+          "name": "Dựng trang danh sách duyệt 日付逆転: tab, bộ lọc, menu và deep-link",
+          "role": "fe",
+          "md": null,
+          "description": "Route /approvals/date-reversal: 5 tab + đếm, bộ lọc khách/SKU/ngày gửi (M_13) ghi query string, bảng DRX-xxxxxx có so hạn và badge 本日期限, paging; menu 「日付逆転承認」, guard route, deep-link ?id= / ?orderId=.",
+          "checklist": [
+            "Tab + đếm theo API, sort theo tab",
+            "Guard: vai trò ngoài 4 vai trò → M_20",
+            "Deep-link mở sẵn panel chi tiết",
+            "Loading/Empty M_32/Error M_40/M_41"
+          ],
+          "acceptance_criteria": [
+            "Mở /approvals/date-reversal?id=X hiển thị đúng yêu cầu X",
+            "Vai trò không có quyền vào thẳng URL nhận M_20"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-044 §2", "SCR-044 §4", "SCR-044 §7"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.6.5"]
+        },
+        {
+          "id": "FE-6.6.7",
+          "name": "Dựng panel chi tiết yêu cầu, khối kiểm lại và dialog duyệt/từ chối",
+          "role": "fe",
+          "md": null,
+          "description": "Panel 8.1–8.3 (so hạn, lý do, link bằng chứng), khối 8.4 kiểm lại hiện tại, timeline 8.8, nút 承認/却下 theo quyền/trạng thái, dialog xác nhận [9], M_454, banner kết quả [10], M_450 → reload.",
+          "checklist": [
+            "Kiểm lại có ✕ vẫn cho 承認 (ghi expired) theo spec, có chú thích",
+            "Từ chối nhận xét 10–500, duyệt nhận xét ≤ 500",
+            "Banner hiển thị approved/expired + expire_reason"
+          ],
+          "acceptance_criteria": [
+            "Người gửi yêu cầu không thấy nút 承認/却下 với yêu cầu của mình",
+            "Duyệt ra expired hiển thị banner lý do, không báo lỗi"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-044 §2", "SCR-044 §4"],
+          "special_constraint": false,
+          "depends_on": ["BE-6.6.5", "FE-6.6.6"]
+        },
+        {
+          "id": "QA-6.6.8",
+          "name": "Viết test case + chạy test SCR-044",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test state machine, tự duyệt, 6 lý do expire (gồm job PREVIOUS_CHANGED), RBAC 4 nhóm vai trò, xem bằng chứng ghi audit, đồng thời (2 manager; duyệt song song allocate_lot / cancel_order).",
+          "checklist": [
+            "State machine + 6 expire_reason",
+            "Job 00:05: REQUESTED_DATE_PASSED và PREVIOUS_CHANGED",
+            "Đồng thời 2 manager; duyệt vs allocate_lot/cancel_order",
+            "RBAC 4 nhóm vai trò, audit evidence_viewed"
+          ],
+          "acceptance_criteria": [
+            "Bộ test case được review và lưu trong repo test",
+            "Mọi case chạy pass hoặc lỗi được tạo issue có bước tái hiện"
+          ],
+          "size_hint": "L",
+          "spec_refs": ["SCR-044 §4", "SCR-044 §6"],
+          "special_constraint": false,
+          "depends_on": ["FE-6.6.7", "BE-6.6.4"]
+        }
+      ]
+    }
+  ]
+}

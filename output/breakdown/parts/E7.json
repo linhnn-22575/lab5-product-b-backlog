@@ -1,0 +1,233 @@
+{
+  "id": "E7",
+  "name": "F05 Kiểm trước xuất",
+  "description": "SCR-053 出荷前チェック: kiểm từng dòng phân bổ bằng quét/nhập tay, quét xe, niêm phong, nhiệt độ xe + hàng rồi 出荷確定 qua RPC confirm_shipment (7 tham số) có idempotency. Áp 2 sửa thiết kế: giờ xuất phát = planned_arrival + service_min của depot; confirm_shipment kiểm theo route_version published hiện hành. Phụ thuộc bảng tuyến của E8.",
+  "total_md": null,
+  "stories": [
+    {
+      "id": "S7.1",
+      "name": "Xác nhận xuất hàng an toàn qua RPC confirm_shipment",
+      "description": "Mở rộng schema shipments/shipment_checks/deviations, view dòng kiểm và RPC confirm_shipment tách 3 phần: tiền kiểm (role, idempotency, khóa, tuyến published), gom lỗi a–j không raise, ghi xuất kho.",
+      "screen": "SCR-053",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-7.1.1",
+          "name": "Tạo migration xuất hàng và hàm effective_temp_policy",
+          "role": "be",
+          "md": null,
+          "description": "Thêm cột shipments (cargo_temp_c, seal_no, route_version_id, policy_version_id), shipment_checks (input_method, manual_reason, scanned_sku_code), deviations (measure_type, order_id), idempotency_keys nếu chưa có; viết hàm effective_temp_policy(p_zone, p_date) dùng chung SCR-022.",
+          "checklist": ["Migration up/down cho 4 bảng", "Hàm effective_temp_policy đọc temp_zone_policy_versions theo ngày", "Test biên: bằng biên = đạt, 冷凍 không có cận dưới", "Cập nhật type sinh từ Supabase"],
+          "acceptance_criteria": ["Migration chạy sạch trên DB có dữ liệu LAB-2", "effective_temp_policy trả đúng phiên bản hiệu lực ở ngày đổi chính sách", "Unit test biên nhiệt độ pass"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 §3", "SCR-053 §9", "database-design §ERD shipments"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.1"]
+        },
+        {
+          "id": "BE-7.1.2",
+          "name": "Tạo view outbound_check_lines_view tính hạn, đảo ngày, ngoại lệ",
+          "role": "be",
+          "md": null,
+          "description": "View security_invoker outbound_check_lines_view ghép allocations/lots/skus với last_delivered_expiry(), is_date_reversal(), app_today() và date_reversal_exception_requests để trả trạng thái 消費期限/賞味期限/đảo ngày cho từng dòng.",
+          "checklist": ["security_invoker = true", "Cột consumption_expired, best_before_expired, date_reversal, exception_status", "\"Hôm nay\" lấy từ app_today()", "Index cho join theo order_id"],
+          "acceptance_criteria": ["Đơn có lô 消費期限 = hôm nay hiện consumption_expired = true", "Vai trò chỉ xem đọc được view, RLS không rò đơn ngoài quyền"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-053 §3", "SCR-053 §9", "BR-EXP-01/02", "BR-DATE-01/02"],
+          "special_constraint": false,
+          "depends_on": ["BE-7.1.1"]
+        },
+        {
+          "id": "BE-7.1.3",
+          "name": "Viết confirm_shipment phần 1: quyền, idempotency, kiểm bản tuyến published",
+          "role": "be",
+          "md": null,
+          "description": "RPC confirm_shipment bước 1–5: thêm warehouse_lead vào outbound:write + has_role trong RPC, idempotency_keys, khóa đơn, khóa lô theo id; SỬA THIẾT KẾ: kiểm đơn thuộc route_version status='published' hiện hành của tuyến, không dùng routes.status/current_version (quyết định 1).",
+          "checklist": ["has_role cho warehouse/warehouse_lead/admin", "Idempotency-Key trùng trả lại kết quả cũ", "Tìm bản published mới nhất, so với route_version_id client gửi → M_22 nếu lệch", "Khóa đơn và lô theo thứ tự id tránh deadlock"],
+          "acceptance_criteria": ["Tuyến đang có bản draft (routes vẫn published) vẫn xuất được theo bản published", "Đơn không thuộc bản published → M_465/M_466", "Gọi 2 lần cùng key chỉ tạo 1 shipment"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 §9 bước 1–5", "SCR-053 gap #3", "SCR-062 gap #1", "BR-OUT-04", "ADR-008"],
+          "special_constraint": false,
+          "depends_on": ["BE-7.1.1", "BE-8.5.2"]
+        },
+        {
+          "id": "BE-7.1.4",
+          "name": "Viết confirm_shipment phần 2: gom lỗi kiểm a–j không raise",
+          "role": "be",
+          "md": null,
+          "description": "Gom mọi problem b–j (xe/vùng, lô/SKU, SL, cách ly, 消費期限, 賞味期限 cảnh báo, đảo ngày + ngoại lệ approved, nhiệt xe và hàng, niêm phong); INSERT deviations (mỗi giá trị ngoài ngưỡng 1 dòng) và exception_events rồi trả blocked, transaction vẫn commit.",
+          "checklist": ["Trả danh sách problem có allocationId/field + mã M_xx", "Deviation riêng cho nhiệt xe và nhiệt hàng", "消費期限 ≤ hôm nay ghi exception_events", "賞味期限 quá chỉ là warning, không chặn"],
+          "acceptance_criteria": ["Xe + hàng cùng ngoài ngưỡng → 2 deviation được lưu dù bị chặn", "Bằng biên nhiệt độ = đạt", "Kết quả blocked có đủ mọi lỗi, không dừng ở lỗi đầu"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 §3 a–j", "SCR-053 §9 bước 6", "BR-TEMP-01", "BR-TEMP-02", "BR-INV-01", "BR-OUT-01", "BR-OUT-02"],
+          "special_constraint": false,
+          "depends_on": ["BE-7.1.3", "BE-7.1.2"]
+        },
+        {
+          "id": "BE-7.1.5",
+          "name": "Viết confirm_shipment phần 3: ghi xuất kho và trạng thái đơn",
+          "role": "be",
+          "md": null,
+          "description": "Khi không có lỗi chặn: INSERT shipments, shipment_checks, delivery_history (thứ tự expiry, id), inventory_movements 'ship', cập nhật lots depleted + lot_status_events, orders.status='shipped', audit_log.",
+          "checklist": ["shipments lưu route_version_id published và policy_version_id", "delivery_history theo thứ tự expiry rồi id", "Lô về 0 → depleted + lot_status_events", "audit_log cho shipment"],
+          "acceptance_criteria": ["Sau xuất tồn lô giảm đúng SL, có movement 'ship'", "Đơn chuyển shipped, lần xuất tiếp bị chặn trạng thái", "delivery_history dùng được cho kiểm đảo ngày lần sau"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 §9 bước 7", "BR-INV-02", "BR-DATE-01", "ADR-003", "BR-OUT-03"],
+          "special_constraint": false,
+          "depends_on": ["BE-7.1.4"]
+        }
+      ]
+    },
+    {
+      "id": "S7.2",
+      "name": "API kiểm trước xuất",
+      "description": "3 API Next.js cho danh sách chờ/đã xuất, chi tiết kiểm đơn và xác nhận xuất; giờ xuất phát tính lại theo SCR-060.",
+      "screen": "SCR-053",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "BE-7.2.1",
+          "name": "Sửa giờ xuất phát thành planned_arrival + service_min của depot đầu",
+          "role": "be",
+          "md": null,
+          "description": "SỬA THIẾT KẾ (053 gap #2): giờ xuất phát hiển thị = route_stops.planned_arrival + service_min của depot đầu (始業 + 出庫前作業) thay cho planned_arrival; đặt trong 1 hàm SQL dùng chung cho 2 API GET.",
+          "checklist": ["Hàm route_departure_time(route_version_id)", "Đọc bản published hiện hành, không đọc current_version", "Cập nhật spec SCR-053 logic-10-4", "Unit test với service_min = 0 và 30"],
+          "acceptance_criteria": ["Depot đầu 06:00 + service 30 phút → hiển thị 06:30", "Giờ trùng với 出庫 hiển thị ở SCR-060"],
+          "size_hint": "S",
+          "spec_refs": ["SCR-053 logic-10-4", "SCR-060 logic-6-5", "SCR-053 gap #2"],
+          "special_constraint": false,
+          "depends_on": ["BE-8.1.1"]
+        },
+        {
+          "id": "BE-7.2.2",
+          "name": "Viết API GET pending-and-done và GET outbound-check",
+          "role": "be",
+          "md": null,
+          "description": "GET /api/shipments/pending-and-done (tuyến/xe/tài xế, giờ xuất phát, canStartCheck, blockReason, lọc ngày/tuyến/ルート未割当) và GET /api/orders/[id]/outbound-check (DTO route, policy, dateReversal, shipment.checks) đọc từ outbound_check_lines_view.",
+          "checklist": ["Lọc ngày xuất + tuyến + unassigned", "canStartCheck/blockReason theo ma trận 053#8", "DTO trả route_version_id published để client gửi lại", "403 cho vai trò không có quyền xem"],
+          "acceptance_criteria": ["Đơn thuộc tuyến chưa published có canStartCheck=false + blockReason", "DTO outbound-check đủ trường cho bảng kiểm dòng và khung 積込確認"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 §9 API", "SCR-053 §8", "SCR-053 logic-5"],
+          "special_constraint": false,
+          "depends_on": ["BE-7.1.2", "BE-7.2.1"]
+        },
+        {
+          "id": "BE-7.2.3",
+          "name": "Viết API POST /api/shipments với Idempotency-Key bắt buộc",
+          "role": "be",
+          "md": null,
+          "description": "POST /api/shipments: zod validate body 7 tham số, header Idempotency-Key bắt buộc, gọi confirm_shipment, map kết quả 201 / 409 OUTBOUND_BLOCKED (kèm problems) / 409 trạng thái / 400 / 403 → mã M_xx.",
+          "checklist": ["Schema zod cho checks, xe, niêm phong, 2 nhiệt độ", "Thiếu header → 400", "Map problems sang allocationId/field", "Log lỗi 500 không lộ chi tiết DB"],
+          "acceptance_criteria": ["Bị chặn trả 409 kèm đủ danh sách lỗi", "Gửi lại cùng key trả cùng kết quả 201"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-053 §9 API", "ADR-008", "message-list M_465–M_488"],
+          "special_constraint": false,
+          "depends_on": ["BE-7.1.5"]
+        }
+      ]
+    },
+    {
+      "id": "S7.3",
+      "name": "Màn hình quét, kiểm và xác nhận xuất",
+      "description": "Trang /outbound và /outbound/[orderId]: danh sách, bảng kiểm dòng bằng máy quét, khung 積込確認, luồng xác nhận có idempotency; test và làm rõ giả định.",
+      "screen": "SCR-053",
+      "estimate_ref": null,
+      "total_md": null,
+      "tasks": [
+        {
+          "id": "FE-7.3.1",
+          "name": "Dựng trang /outbound: tab, bộ lọc, bảng chờ xuất và đã xuất",
+          "role": "fe",
+          "md": null,
+          "description": "Trang /outbound gọi GET pending-and-done: tab 出荷待ち/出荷済み có đếm, lọc ngày + tuyến (gồm ルート未割当), sort, nút 検品開始 + tooltip M_465/M_466 khi bị chặn.",
+          "checklist": ["Tab + số đếm", "Bộ lọc giữ trên URL", "Nút 検品開始 disable theo canStartCheck", "Hiện xe, tài xế, giờ xuất phát"],
+          "acceptance_criteria": ["Đơn tuyến chưa published hiện tooltip M_465/M_466", "Lọc ルート未割当 chỉ ra đơn chưa gán tuyến"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-053 §2", "SCR-053 logic-5"],
+          "special_constraint": false,
+          "depends_on": ["BE-7.2.2"]
+        },
+        {
+          "id": "FE-7.3.2",
+          "name": "Dựng trang kiểm: header, khung tuyến, khung 積込確認",
+          "role": "fe",
+          "md": null,
+          "description": "Trang /outbound/[orderId]: header đơn, khung tuyến (bản, xe, tài xế, giờ xuất phát), render theo ma trận trạng thái 053#8, ghi chú chỉ xem M_484; khung 積込確認 mã xe (M_472), niêm phong, 2 nhiệt độ, nhãn ngưỡng, cảnh báo M_479, M_483/M_473.",
+          "checklist": ["Render theo ma trận đơn × tuyến × vai trò", "Validate mã xe/vùng xe phía client", "Hiện ngưỡng nhiệt áp dụng", "Cảnh báo nhiệt ngoài ngưỡng trước khi gửi"],
+          "acceptance_criteria": ["Vai trò chỉ xem không thấy nút xác nhận, có ghi chú M_484", "Nhiệt ngoài ngưỡng hiện M_479 ngay khi nhập"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 §2", "SCR-053 §8", "SCR-053 logic-13"],
+          "special_constraint": false,
+          "depends_on": ["BE-7.2.2"]
+        },
+        {
+          "id": "FE-7.3.3",
+          "name": "Làm bảng kiểm dòng hỗ trợ máy quét và nhập tay có lý do",
+          "role": "fe",
+          "md": null,
+          "description": "Bảng kiểm dòng: radio scan/manual, tách mã vạch {sku}|{lot} (M_486), cấm paste khi scan, Enter nhảy ô SL, badge đối chiếu/hạn/cách ly/đảo ngày, lý do nhập tay bắt buộc.",
+          "checklist": ["Parser mã vạch tách riêng để thay khi khách chốt định dạng", "Điều hướng phím Enter", "Chặn paste ở chế độ scan", "Badge kết quả đối chiếu từng dòng"],
+          "acceptance_criteria": ["Quét sai lô hiện M_469/M_487 trên đúng dòng", "Chọn manual không nhập lý do thì không gửi được"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 logic-11", "SCR-053 logic-12", "SCR-053 §4"],
+          "special_constraint": false,
+          "depends_on": ["FE-7.3.2"]
+        },
+        {
+          "id": "FE-7.3.4",
+          "name": "Làm luồng xác nhận xuất với dialog, idempotency và xử lý lỗi",
+          "role": "fe",
+          "md": null,
+          "description": "Enable nút khi đủ trường, dialog M_482 + M_488, sinh Idempotency-Key 1 lần/lần mở dialog, xử lý 201 / 409 blocked (khung 17 map allocationId/field) / 409 trạng thái / M_22 / 403 / 401 / 500 / mạng, khung 18 đã xuất, guard rời trang M_31.",
+          "checklist": ["Key giữ nguyên khi retry trong cùng dialog", "Map lỗi về đúng dòng/trường", "Hiện bản ghi đã xuất sau 201", "beforeunload khi có dữ liệu"],
+          "acceptance_criteria": ["Bấm 2 lần chỉ tạo 1 lần xuất", "409 blocked hiện đủ lỗi tại dòng tương ứng"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 logic-15", "SCR-053 logic-17", "SCR-053 logic-18"],
+          "special_constraint": false,
+          "depends_on": ["FE-7.3.3", "BE-7.2.3"]
+        },
+        {
+          "id": "QA-7.3.1",
+          "name": "Viết test case SCR-053: kiểm a–j, idempotency, xung đột bản tuyến",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Test case cho 10 kiểm tra a–j (biên nhiệt độ, 消費期限 = hôm nay, 賞味期限 hôm qua), nhập tay có/không lý do, idempotency, deviation vẫn lưu khi bị chặn, M_22 và xuất khi tuyến có bản draft.",
+          "checklist": ["Ma trận a–j × đạt/chặn", "Ca bấm 2 lần + mạng chập chờn", "Ca xe + hàng ngoài ngưỡng → 2 deviation", "Ca tuyến đổi sau công bố vẫn xuất theo bản published"],
+          "acceptance_criteria": ["Mỗi kiểm a–j có ít nhất 1 ca đạt và 1 ca chặn", "Có ca cho 2 sửa thiết kế (giờ xuất phát, bản published)"],
+          "size_hint": "L",
+          "spec_refs": ["SCR-053 §3", "SCR-053 §8", "SCR-053 gap #2", "SCR-053 gap #3"],
+          "special_constraint": false,
+          "depends_on": []
+        },
+        {
+          "id": "QA-7.3.2",
+          "name": "Chạy test SCR-053 trên máy quét giả lập và 2 nhóm vai trò",
+          "role": "qa_manual",
+          "md": null,
+          "description": "Chạy bộ test case SCR-053 với máy quét giả lập bàn phím, vai trò ghi (warehouse, warehouse_lead, admin) và chỉ xem; kiểm DB shipments/deviations/exception_events sau mỗi ca.",
+          "checklist": ["Chạy đủ test case QA-7.3.1", "Kiểm dữ liệu DB sau ca bị chặn", "Ghi bug kèm bằng chứng", "Re-test bug đã sửa"],
+          "acceptance_criteria": ["Báo cáo pass/fail cho toàn bộ ca", "Không còn bug mức cao mở"],
+          "size_hint": "M",
+          "spec_refs": ["SCR-053 §7", "SCR-053 §10"],
+          "special_constraint": false,
+          "depends_on": ["QA-7.3.1", "FE-7.3.4"]
+        },
+        {
+          "id": "BRSE-7.3.1",
+          "name": "Làm rõ giả định SCR-053: mã vạch, đảo ngày, lý do nhập tay",
+          "role": "brse",
+          "md": null,
+          "description": "Gửi khách Q&A cho gap 053 #1 (kiểm lại đảo ngày lúc xuất), #4 (định dạng {sku}|{lot}), #5 (lý do nhập tay, nhiệt hàng 1 giá trị, trùng niêm phong), #6 (ngoại lệ approved khi mốc giao đổi), #7 (đơn chưa gán, sort, in_progress).",
+          "checklist": ["Soạn câu hỏi tiếng Nhật kèm giả định hiện tại", "Ưu tiên #4 vì chặn parser FE", "Theo dõi trả lời", "Cập nhật spec + báo task bị ảnh hưởng"],
+          "acceptance_criteria": ["Mỗi gap có câu trả lời hoặc ghi rõ giữ giả định", "Định dạng mã vạch được chốt trước khi FE-7.3.3 xong"],
+          "size_hint": "S",
+          "spec_refs": ["SCR-053 gap #1", "SCR-053 gap #4", "SCR-053 gap #5", "SCR-053 gap #6", "SCR-053 gap #7"],
+          "special_constraint": false,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}
