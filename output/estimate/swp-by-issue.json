@@ -1,0 +1,1402 @@
+{
+ "source": "reports/sun-estimate-lab5-product-b-backlog-261111.html (calibrationStatus=accepted)",
+ "hours_per_swp": 2,
+ "note": "Sub-issue: SWP đã review; issue/epic: tổng SWP của con (không tra ma trận lại). Giờ = SWP × 2.",
+ "items": {
+  "E1": {
+   "number": 1,
+   "swp": 71,
+   "hours": 142
+  },
+  "S1.1": {
+   "number": 2,
+   "swp": 20,
+   "hours": 40
+  },
+  "BE-1.1.1": {
+   "number": 3,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-1.1.2": {
+   "number": 4,
+   "swp": 10,
+   "hours": 20
+  },
+  "BE-1.1.3": {
+   "number": 5,
+   "swp": 5,
+   "hours": 10
+  },
+  "S1.2": {
+   "number": 6,
+   "swp": 10,
+   "hours": 20
+  },
+  "BE-1.2.1": {
+   "number": 7,
+   "swp": 4,
+   "hours": 8
+  },
+  "FE-1.2.2": {
+   "number": 8,
+   "swp": 6,
+   "hours": 12
+  },
+  "S1.3": {
+   "number": 9,
+   "swp": 15,
+   "hours": 30
+  },
+  "BE-1.3.1": {
+   "number": 10,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-1.3.2": {
+   "number": 11,
+   "swp": 6,
+   "hours": 12
+  },
+  "FE-1.3.3": {
+   "number": 12,
+   "swp": 4,
+   "hours": 8
+  },
+  "S1.4": {
+   "number": 13,
+   "swp": 10,
+   "hours": 20
+  },
+  "BE-1.4.1": {
+   "number": 14,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-1.4.2": {
+   "number": 15,
+   "swp": 5,
+   "hours": 10
+  },
+  "S1.5": {
+   "number": 16,
+   "swp": 16,
+   "hours": 32
+  },
+  "INFRA-1.5.1": {
+   "number": 17,
+   "swp": 6,
+   "hours": 12
+  },
+  "INFRA-1.5.2": {
+   "number": 18,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-1.5.3": {
+   "number": 19,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-1.5.4": {
+   "number": 20,
+   "swp": 3,
+   "hours": 6
+  },
+  "E2": {
+   "number": 21,
+   "swp": 89,
+   "hours": 178
+  },
+  "S2.1": {
+   "number": 22,
+   "swp": 40,
+   "hours": 80
+  },
+  "INFRA-2.1.1": {
+   "number": 23,
+   "swp": 8,
+   "hours": 16
+  },
+  "BE-2.1.2": {
+   "number": 24,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-2.1.3": {
+   "number": 25,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-2.1.4": {
+   "number": 26,
+   "swp": 6,
+   "hours": 12
+  },
+  "FE-2.1.5": {
+   "number": 27,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-2.1.6": {
+   "number": 28,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-2.1.7": {
+   "number": 29,
+   "swp": 5,
+   "hours": 10
+  },
+  "S2.2": {
+   "number": 30,
+   "swp": 23,
+   "hours": 46
+  },
+  "BE-2.2.1": {
+   "number": 31,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-2.2.2": {
+   "number": 32,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-2.2.3": {
+   "number": 33,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-2.2.4": {
+   "number": 34,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-2.2.5": {
+   "number": 35,
+   "swp": 5,
+   "hours": 10
+  },
+  "S2.3": {
+   "number": 36,
+   "swp": 26,
+   "hours": 52
+  },
+  "BE-2.3.1": {
+   "number": 37,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-2.3.2": {
+   "number": 38,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-2.3.3": {
+   "number": 39,
+   "swp": 4,
+   "hours": 8
+  },
+  "FE-2.3.4": {
+   "number": 40,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-2.3.5": {
+   "number": 41,
+   "swp": 5,
+   "hours": 10
+  },
+  "BRSE-2.3.6": {
+   "number": 42,
+   "swp": 3,
+   "hours": 6
+  },
+  "E3": {
+   "number": 43,
+   "swp": 104,
+   "hours": 208
+  },
+  "S3.1": {
+   "number": 44,
+   "swp": 23,
+   "hours": 46
+  },
+  "BE-3.1.1": {
+   "number": 45,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-3.1.2": {
+   "number": 46,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-3.1.3": {
+   "number": 47,
+   "swp": 4,
+   "hours": 8
+  },
+  "FE-3.1.4": {
+   "number": 48,
+   "swp": 3,
+   "hours": 6
+  },
+  "QA-3.1.5": {
+   "number": 49,
+   "swp": 5,
+   "hours": 10
+  },
+  "S3.2": {
+   "number": 50,
+   "swp": 9,
+   "hours": 18
+  },
+  "BE-3.2.1": {
+   "number": 51,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-3.2.2": {
+   "number": 52,
+   "swp": 4,
+   "hours": 8
+  },
+  "S3.3": {
+   "number": 53,
+   "swp": 36,
+   "hours": 72
+  },
+  "BE-3.3.1": {
+   "number": 54,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-3.3.2": {
+   "number": 55,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-3.3.3": {
+   "number": 56,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-3.3.4": {
+   "number": 57,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-3.3.5": {
+   "number": 58,
+   "swp": 4,
+   "hours": 8
+  },
+  "FE-3.3.6": {
+   "number": 59,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-3.3.7": {
+   "number": 60,
+   "swp": 8,
+   "hours": 16
+  },
+  "S3.4": {
+   "number": 61,
+   "swp": 36,
+   "hours": 72
+  },
+  "BE-3.4.1": {
+   "number": 62,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-3.4.2": {
+   "number": 63,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-3.4.3": {
+   "number": 64,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-3.4.4": {
+   "number": 65,
+   "swp": 4,
+   "hours": 8
+  },
+  "FE-3.4.5": {
+   "number": 66,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-3.4.6": {
+   "number": 67,
+   "swp": 8,
+   "hours": 16
+  },
+  "BRSE-3.4.7": {
+   "number": 68,
+   "swp": 3,
+   "hours": 6
+  },
+  "E4": {
+   "number": 69,
+   "swp": 51,
+   "hours": 102
+  },
+  "S4.1": {
+   "number": 70,
+   "swp": 25,
+   "hours": 50
+  },
+  "BE-4.1.1": {
+   "number": 71,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-4.1.2": {
+   "number": 72,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-4.1.3": {
+   "number": 73,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-4.1.4": {
+   "number": 74,
+   "swp": 4,
+   "hours": 8
+  },
+  "FE-4.1.5": {
+   "number": 75,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-4.1.6": {
+   "number": 76,
+   "swp": 5,
+   "hours": 10
+  },
+  "S4.2": {
+   "number": 77,
+   "swp": 26,
+   "hours": 52
+  },
+  "BE-4.2.1": {
+   "number": 78,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-4.2.2": {
+   "number": 79,
+   "swp": 6,
+   "hours": 12
+  },
+  "FE-4.2.3": {
+   "number": 80,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-4.2.4": {
+   "number": 81,
+   "swp": 8,
+   "hours": 16
+  },
+  "BRSE-4.2.5": {
+   "number": 82,
+   "swp": 2,
+   "hours": 4
+  },
+  "E5": {
+   "number": 83,
+   "swp": 92,
+   "hours": 184
+  },
+  "S5.1": {
+   "number": 84,
+   "swp": 20,
+   "hours": 40
+  },
+  "BE-5.1.1": {
+   "number": 85,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-5.1.2": {
+   "number": 86,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-5.1.3": {
+   "number": 87,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-5.1.4": {
+   "number": 88,
+   "swp": 5,
+   "hours": 10
+  },
+  "S5.2": {
+   "number": 89,
+   "swp": 28,
+   "hours": 56
+  },
+  "BE-5.2.1": {
+   "number": 90,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-5.2.2": {
+   "number": 91,
+   "swp": 6,
+   "hours": 12
+  },
+  "INFRA-5.2.3": {
+   "number": 92,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-5.2.4": {
+   "number": 93,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-5.2.5": {
+   "number": 94,
+   "swp": 4,
+   "hours": 8
+  },
+  "QA-5.2.6": {
+   "number": 95,
+   "swp": 5,
+   "hours": 10
+  },
+  "S5.3": {
+   "number": 96,
+   "swp": 44,
+   "hours": 88
+  },
+  "BE-5.3.1": {
+   "number": 97,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-5.3.2": {
+   "number": 98,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-5.3.3": {
+   "number": 99,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-5.3.4": {
+   "number": 100,
+   "swp": 6,
+   "hours": 12
+  },
+  "FE-5.3.5": {
+   "number": 101,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-5.3.6": {
+   "number": 102,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-5.3.7": {
+   "number": 103,
+   "swp": 3,
+   "hours": 6
+  },
+  "QA-5.3.8": {
+   "number": 104,
+   "swp": 5,
+   "hours": 10
+  },
+  "BRSE-5.3.9": {
+   "number": 105,
+   "swp": 3,
+   "hours": 6
+  },
+  "E6": {
+   "number": 106,
+   "swp": 157,
+   "hours": 314
+  },
+  "S6.1": {
+   "number": 107,
+   "swp": 31,
+   "hours": 62
+  },
+  "BE-6.1.1": {
+   "number": 108,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-6.1.2": {
+   "number": 109,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-6.1.3": {
+   "number": 110,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-6.1.4": {
+   "number": 111,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-6.1.5": {
+   "number": 112,
+   "swp": 6,
+   "hours": 12
+  },
+  "QA-6.1.6": {
+   "number": 113,
+   "swp": 5,
+   "hours": 10
+  },
+  "BRSE-6.1.7": {
+   "number": 114,
+   "swp": 3,
+   "hours": 6
+  },
+  "S6.2": {
+   "number": 115,
+   "swp": 16,
+   "hours": 32
+  },
+  "BE-6.2.1": {
+   "number": 116,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-6.2.2": {
+   "number": 117,
+   "swp": 4,
+   "hours": 8
+  },
+  "FE-6.2.3": {
+   "number": 118,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-6.2.4": {
+   "number": 119,
+   "swp": 3,
+   "hours": 6
+  },
+  "S6.3": {
+   "number": 120,
+   "swp": 19,
+   "hours": 38
+  },
+  "BE-6.3.1": {
+   "number": 121,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-6.3.2": {
+   "number": 122,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-6.3.3": {
+   "number": 123,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-6.3.4": {
+   "number": 124,
+   "swp": 3,
+   "hours": 6
+  },
+  "QA-6.3.5": {
+   "number": 125,
+   "swp": 3,
+   "hours": 6
+  },
+  "S6.4": {
+   "number": 126,
+   "swp": 37,
+   "hours": 74
+  },
+  "BE-6.4.1": {
+   "number": 127,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-6.4.2": {
+   "number": 128,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-6.4.3": {
+   "number": 129,
+   "swp": 6,
+   "hours": 12
+  },
+  "FE-6.4.4": {
+   "number": 130,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-6.4.5": {
+   "number": 131,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-6.4.6": {
+   "number": 132,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-6.4.7": {
+   "number": 133,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-6.4.8": {
+   "number": 134,
+   "swp": 5,
+   "hours": 10
+  },
+  "S6.5": {
+   "number": 135,
+   "swp": 13,
+   "hours": 26
+  },
+  "BE-6.5.1": {
+   "number": 136,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-6.5.2": {
+   "number": 137,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-6.5.3": {
+   "number": 138,
+   "swp": 3,
+   "hours": 6
+  },
+  "S6.6": {
+   "number": 139,
+   "swp": 41,
+   "hours": 82
+  },
+  "BE-6.6.1": {
+   "number": 140,
+   "swp": 6,
+   "hours": 12
+  },
+  "INFRA-6.6.2": {
+   "number": 141,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-6.6.3": {
+   "number": 142,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-6.6.4": {
+   "number": 143,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-6.6.5": {
+   "number": 144,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-6.6.6": {
+   "number": 145,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-6.6.7": {
+   "number": 146,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-6.6.8": {
+   "number": 147,
+   "swp": 8,
+   "hours": 16
+  },
+  "E7": {
+   "number": 148,
+   "swp": 57,
+   "hours": 114
+  },
+  "S7.1": {
+   "number": 149,
+   "swp": 22,
+   "hours": 44
+  },
+  "BE-7.1.1": {
+   "number": 150,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-7.1.2": {
+   "number": 151,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-7.1.3": {
+   "number": 152,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-7.1.4": {
+   "number": 153,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-7.1.5": {
+   "number": 154,
+   "swp": 5,
+   "hours": 10
+  },
+  "S7.2": {
+   "number": 155,
+   "swp": 8,
+   "hours": 16
+  },
+  "BE-7.2.1": {
+   "number": 156,
+   "swp": 1,
+   "hours": 2
+  },
+  "BE-7.2.2": {
+   "number": 157,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-7.2.3": {
+   "number": 158,
+   "swp": 3,
+   "hours": 6
+  },
+  "S7.3": {
+   "number": 159,
+   "swp": 27,
+   "hours": 54
+  },
+  "FE-7.3.1": {
+   "number": 160,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-7.3.2": {
+   "number": 161,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-7.3.3": {
+   "number": 162,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-7.3.4": {
+   "number": 163,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-7.3.1": {
+   "number": 164,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-7.3.2": {
+   "number": 165,
+   "swp": 4,
+   "hours": 8
+  },
+  "BRSE-7.3.1": {
+   "number": 166,
+   "swp": 2,
+   "hours": 4
+  },
+  "E8": {
+   "number": 167,
+   "swp": 118,
+   "hours": 236
+  },
+  "S8.1": {
+   "number": 168,
+   "swp": 14,
+   "hours": 28
+  },
+  "BE-8.1.1": {
+   "number": 169,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-8.1.2": {
+   "number": 170,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-8.1.3": {
+   "number": 171,
+   "swp": 5,
+   "hours": 10
+  },
+  "S8.2": {
+   "number": 172,
+   "swp": 20,
+   "hours": 40
+  },
+  "BE-8.2.1": {
+   "number": 173,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-8.2.2": {
+   "number": 174,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-8.2.3": {
+   "number": 175,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-8.2.4": {
+   "number": 176,
+   "swp": 6,
+   "hours": 12
+  },
+  "S8.3": {
+   "number": 177,
+   "swp": 18,
+   "hours": 36
+  },
+  "BE-8.3.1": {
+   "number": 178,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-8.3.2": {
+   "number": 179,
+   "swp": 3,
+   "hours": 6
+  },
+  "INFRA-8.3.1": {
+   "number": 180,
+   "swp": 3,
+   "hours": 6
+  },
+  "INFRA-8.3.2": {
+   "number": 181,
+   "swp": 6,
+   "hours": 12
+  },
+  "S8.4": {
+   "number": 182,
+   "swp": 26,
+   "hours": 52
+  },
+  "FE-8.4.1": {
+   "number": 183,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-8.4.2": {
+   "number": 184,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-8.4.3": {
+   "number": 185,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-8.4.4": {
+   "number": 186,
+   "swp": 3,
+   "hours": 6
+  },
+  "QA-8.4.1": {
+   "number": 187,
+   "swp": 8,
+   "hours": 16
+  },
+  "S8.5": {
+   "number": 188,
+   "swp": 40,
+   "hours": 80
+  },
+  "BE-8.5.1": {
+   "number": 189,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-8.5.2": {
+   "number": 190,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-8.5.3": {
+   "number": 191,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-8.5.4": {
+   "number": 192,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-8.5.1": {
+   "number": 193,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-8.5.2": {
+   "number": 194,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-8.5.1": {
+   "number": 195,
+   "swp": 8,
+   "hours": 16
+  },
+  "BRSE-8.5.1": {
+   "number": 196,
+   "swp": 3,
+   "hours": 6
+  },
+  "E9": {
+   "number": 197,
+   "swp": 210,
+   "hours": 420
+  },
+  "S9.1": {
+   "number": 198,
+   "swp": 39,
+   "hours": 78
+  },
+  "BE-9.1.1": {
+   "number": 199,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-9.1.2": {
+   "number": 200,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-9.1.3": {
+   "number": 201,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-9.1.4": {
+   "number": 202,
+   "swp": 6,
+   "hours": 12
+  },
+  "FE-9.1.5": {
+   "number": 203,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-9.1.6": {
+   "number": 204,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-9.1.7": {
+   "number": 205,
+   "swp": 8,
+   "hours": 16
+  },
+  "S9.2": {
+   "number": 206,
+   "swp": 10,
+   "hours": 20
+  },
+  "BE-9.2.1": {
+   "number": 207,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-9.2.2": {
+   "number": 208,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-9.2.3": {
+   "number": 209,
+   "swp": 2,
+   "hours": 4
+  },
+  "S9.3": {
+   "number": 210,
+   "swp": 4,
+   "hours": 8
+  },
+  "BE-9.3.1": {
+   "number": 211,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-9.3.2": {
+   "number": 212,
+   "swp": 1,
+   "hours": 2
+  },
+  "S9.4": {
+   "number": 213,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-9.4.1": {
+   "number": 214,
+   "swp": 3,
+   "hours": 6
+  },
+  "S9.5": {
+   "number": 215,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-9.5.1": {
+   "number": 216,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-9.5.2": {
+   "number": 217,
+   "swp": 2,
+   "hours": 4
+  },
+  "S9.6": {
+   "number": 218,
+   "swp": 14,
+   "hours": 28
+  },
+  "BE-9.6.1": {
+   "number": 219,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-9.6.2": {
+   "number": 220,
+   "swp": 6,
+   "hours": 12
+  },
+  "QA-9.6.3": {
+   "number": 221,
+   "swp": 5,
+   "hours": 10
+  },
+  "S9.7": {
+   "number": 222,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-9.7.1": {
+   "number": 223,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-9.7.2": {
+   "number": 224,
+   "swp": 1,
+   "hours": 2
+  },
+  "BE-9.7.3": {
+   "number": 225,
+   "swp": 1,
+   "hours": 2
+  },
+  "BE-9.7.4": {
+   "number": 226,
+   "swp": 1,
+   "hours": 2
+  },
+  "S9.8": {
+   "number": 227,
+   "swp": 22,
+   "hours": 44
+  },
+  "BE-9.8.1": {
+   "number": 228,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-9.8.2": {
+   "number": 229,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-9.8.3": {
+   "number": 230,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-9.8.4": {
+   "number": 231,
+   "swp": 5,
+   "hours": 10
+  },
+  "S9.9": {
+   "number": 232,
+   "swp": 31,
+   "hours": 62
+  },
+  "BE-9.9.1": {
+   "number": 233,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-9.9.2": {
+   "number": 234,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-9.9.3": {
+   "number": 235,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-9.9.4": {
+   "number": 236,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-9.9.5": {
+   "number": 237,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-9.9.6": {
+   "number": 238,
+   "swp": 8,
+   "hours": 16
+  },
+  "S9.10": {
+   "number": 239,
+   "swp": 43,
+   "hours": 86
+  },
+  "BE-9.10.1": {
+   "number": 240,
+   "swp": 4,
+   "hours": 8
+  },
+  "INFRA-9.10.2": {
+   "number": 241,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-9.10.3": {
+   "number": 242,
+   "swp": 6,
+   "hours": 12
+  },
+  "BE-9.10.4": {
+   "number": 243,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-9.10.5": {
+   "number": 244,
+   "swp": 5,
+   "hours": 10
+  },
+  "BE-9.10.6": {
+   "number": 245,
+   "swp": 3,
+   "hours": 6
+  },
+  "FE-9.10.7": {
+   "number": 246,
+   "swp": 4,
+   "hours": 8
+  },
+  "FE-9.10.8": {
+   "number": 247,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-9.10.9": {
+   "number": 248,
+   "swp": 8,
+   "hours": 16
+  },
+  "S9.11": {
+   "number": 249,
+   "swp": 18,
+   "hours": 36
+  },
+  "BRSE-9.11.1": {
+   "number": 250,
+   "swp": 3,
+   "hours": 6
+  },
+  "BE-9.11.2": {
+   "number": 251,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-9.11.3": {
+   "number": 252,
+   "swp": 5,
+   "hours": 10
+  },
+  "QA-9.11.4": {
+   "number": 253,
+   "swp": 5,
+   "hours": 10
+  },
+  "S9.12": {
+   "number": 254,
+   "swp": 11,
+   "hours": 22
+  },
+  "BE-9.12.1": {
+   "number": 255,
+   "swp": 5,
+   "hours": 10
+  },
+  "FE-9.12.2": {
+   "number": 256,
+   "swp": 3,
+   "hours": 6
+  },
+  "QA-9.12.3": {
+   "number": 257,
+   "swp": 3,
+   "hours": 6
+  },
+  "S9.13": {
+   "number": 258,
+   "swp": 4,
+   "hours": 8
+  },
+  "PM-9.13.1": {
+   "number": 259,
+   "swp": 1,
+   "hours": 2
+  },
+  "BRSE-9.13.2": {
+   "number": 260,
+   "swp": 3,
+   "hours": 6
+  },
+  "E10": {
+   "number": 261,
+   "swp": 12,
+   "hours": 24
+  },
+  "S10.1": {
+   "number": 262,
+   "swp": 7,
+   "hours": 14
+  },
+  "BRSE-10.1.1": {
+   "number": 263,
+   "swp": 3,
+   "hours": 6
+  },
+  "BRSE-10.1.2": {
+   "number": 264,
+   "swp": 1,
+   "hours": 2
+  },
+  "BRSE-10.1.3": {
+   "number": 265,
+   "swp": 3,
+   "hours": 6
+  },
+  "S10.2": {
+   "number": 266,
+   "swp": 5,
+   "hours": 10
+  },
+  "BRSE-10.2.1": {
+   "number": 267,
+   "swp": 2,
+   "hours": 4
+  },
+  "BE-10.2.2": {
+   "number": 268,
+   "swp": 3,
+   "hours": 6
+  },
+  "E11": {
+   "number": 269,
+   "swp": 36,
+   "hours": 72
+  },
+  "S11.1": {
+   "number": 270,
+   "swp": 16,
+   "hours": 32
+  },
+  "QA-11.1.1": {
+   "number": 271,
+   "swp": 8,
+   "hours": 16
+  },
+  "QA-11.1.2": {
+   "number": 272,
+   "swp": 8,
+   "hours": 16
+  },
+  "S11.2": {
+   "number": 273,
+   "swp": 9,
+   "hours": 18
+  },
+  "QA-11.2.1": {
+   "number": 274,
+   "swp": 5,
+   "hours": 10
+  },
+  "BRSE-11.2.2": {
+   "number": 275,
+   "swp": 4,
+   "hours": 8
+  },
+  "S11.3": {
+   "number": 276,
+   "swp": 11,
+   "hours": 22
+  },
+  "PM-11.3.1": {
+   "number": 277,
+   "swp": 3,
+   "hours": 6
+  },
+  "PM-11.3.2": {
+   "number": 278,
+   "swp": 2,
+   "hours": 4
+  },
+  "INFRA-11.3.3": {
+   "number": 279,
+   "swp": 6,
+   "hours": 12
+  }
+ }
+}
