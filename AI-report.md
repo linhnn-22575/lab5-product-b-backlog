@@ -49,6 +49,8 @@ viết JSON, viết script và chạy lệnh. Con người (học viên) ra mọ
 | progress-report | 3 câu khẳng định sai so với dữ liệu: "FE hết việc từ ngày 3", "không task nào dưới 6 giờ", "#4 chặn mọi màn nhập/tồn/đơn" | AI, đối chiếu từng câu với dữ liệu giả lập | Sửa theo số liệu thật (FE có việc ngày 3–5 và 6–7; task đầu tiên mất 7,5–15h; #4 chặn #32 và #71) |
 | README | AI viết "đã mở thử bằng cửa sổ ẩn danh" dù chưa mở — **bịa** | AI tự soát | Đổi thành ô checkbox để học viên tự kiểm tra; giữ phần AI đã kiểm thật (request không đăng nhập trả HTTP 200) |
 
+| Toàn bộ bài nộp | Agent `reviewer` soát độc lập ([báo cáo](plans/reports/reviewer-261111-lab5-submission-audit.md)): số liệu khớp Project ở mọi chỗ, không lỗi nghiêm trọng; 8 cảnh báo, chủ yếu: tốc độ 2,5h/SWP là tham số giả lập nhưng báo cáo viết như kết quả đo; "mỗi rule BR-DRV một sub-issue" nói quá (có cặp rule đi chung); module chuỗi lái BE-9.6.1 chỉ 3 SWP | Agent reviewer | Sửa câu chữ, ghi rõ "tham số giả lập", nêu BE-9.6.1 là điểm đáng xem lại. Ô "đã mở ẩn danh" để học viên tự đánh dấu |
+
 Bài học về độ tin cậy của báo cáo do AI viết (câu neo P2-11): lỗi nguy hiểm nhất không phải lỗi chạy, mà là những câu nghe hợp lý nhưng
 không có dữ liệu đỡ — số cộng sai, mã task bịa, câu "đã kiểm tra" khi chưa kiểm. Cả ba loại đều xuất hiện ở bài này và chỉ bắt được khi
 bắt AI đối chiếu từng câu với nguồn (Project, JSON giả lập, breakdown). Báo cáo tiến độ vì vậy lấy số đọc lại từ Project chứ không lấy từ
