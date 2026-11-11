@@ -1,0 +1,254 @@
+{
+  "labels": {
+    "role:be": "LA_kwDOVpNoBs8AAAADCGRLGg",
+    "role:brse": "LA_kwDOVpNoBs8AAAADCGROnQ",
+    "role:fe": "LA_kwDOVpNoBs8AAAADCGRLzw",
+    "role:infra": "LA_kwDOVpNoBs8AAAADCGRNMQ",
+    "role:pm": "LA_kwDOVpNoBs8AAAADCGRN4w",
+    "role:qa": "LA_kwDOVpNoBs8AAAADCGRMfw",
+    "special-constraint": "LA_kwDOVpNoBs8AAAADCGRKlw",
+    "type:epic": "LA_kwDOVpNoBs8AAAADCGRI9Q",
+    "type:story": "LA_kwDOVpNoBs8AAAADCGRJeQ",
+    "type:task": "LA_kwDOVpNoBs8AAAADCGRKCA"
+  },
+  "owner_id": "U_kgDOECB60A",
+  "repo_id": "R_kgDOVpNoBg",
+  "project_id": "PVT_kwHOECB60M4Bq-k9",
+  "project_number": 1,
+  "project_url": "https://github.com/users/linhnn-22575/projects/1",
+  "fields": {
+    "Status": {
+      "id": "PVTSSF_lAHOECB60M4Bq-k9zhpTRxE",
+      "options": [
+        {
+          "id": "d44a5ebd",
+          "name": "Todo"
+        },
+        {
+          "id": "2265da95",
+          "name": "In Progress"
+        },
+        {
+          "id": "8f5f17f0",
+          "name": "In Review"
+        },
+        {
+          "id": "c1ea19f7",
+          "name": "Blocked"
+        },
+        {
+          "id": "71367902",
+          "name": "Done"
+        }
+      ]
+    },
+    "Loại": {
+      "id": "PVTSSF_lAHOECB60M4Bq-k9zhpTRzw",
+      "options": [
+        {
+          "id": "6d9807d1",
+          "name": "Epic"
+        },
+        {
+          "id": "73d0bd9f",
+          "name": "Issue"
+        },
+        {
+          "id": "7416a00a",
+          "name": "Sub-issue"
+        }
+      ]
+    },
+    "Epic": {
+      "id": "PVTSSF_lAHOECB60M4Bq-k9zhpTRz0",
+      "options": [
+        {
+          "id": "04153379",
+          "name": "E1 Nền tảng & sửa prototype trái RFP"
+        },
+        {
+          "id": "793eb14f",
+          "name": "E2 F12 Xác thực & phân quyền"
+        },
+        {
+          "id": "bb5dd696",
+          "name": "E3 F01 Master & chính sách nhiệt"
+        },
+        {
+          "id": "f802c3cb",
+          "name": "E4 F02 Nhập hàng"
+        },
+        {
+          "id": "f1e196b9",
+          "name": "E5 F03 Tồn kho & lô"
+        },
+        {
+          "id": "d60a95d5",
+          "name": "E6 F04 Đơn hàng & phân bổ"
+        },
+        {
+          "id": "ebfea061",
+          "name": "E7 F05 Kiểm trước xuất"
+        },
+        {
+          "id": "1a535eed",
+          "name": "E8 F07 Lập tuyến & công bố (phần không thuộc luật"
+        },
+        {
+          "id": "7a073110",
+          "name": "E9 ★ Ràng buộc giờ lái xe tải 2024 (改善基準告示)"
+        },
+        {
+          "id": "f2627198",
+          "name": "E10 Làm rõ spec & Q&A khách (BrSE)"
+        },
+        {
+          "id": "ef69fa7b",
+          "name": "E11 Kiểm thử tích hợp, UAT & quản lý dự án"
+        }
+      ]
+    },
+    "Vai trò": {
+      "id": "PVTSSF_lAHOECB60M4Bq-k9zhpTRz4",
+      "options": [
+        {
+          "id": "629ac156",
+          "name": "BE"
+        },
+        {
+          "id": "8af11823",
+          "name": "FE"
+        },
+        {
+          "id": "c63fb662",
+          "name": "QA Manual"
+        },
+        {
+          "id": "fc620c14",
+          "name": "Infra"
+        },
+        {
+          "id": "1b12d409",
+          "name": "PM"
+        },
+        {
+          "id": "42eaa01c",
+          "name": "BrSE"
+        }
+      ]
+    },
+    "Phụ trách": {
+      "id": "PVTSSF_lAHOECB60M4Bq-k9zhpTRz8",
+      "options": [
+        {
+          "id": "98251ea7",
+          "name": "BE 1"
+        },
+        {
+          "id": "17d34c9c",
+          "name": "BE 2"
+        },
+        {
+          "id": "923d32cc",
+          "name": "FE 1"
+        },
+        {
+          "id": "1681aca5",
+          "name": "FE 2"
+        },
+        {
+          "id": "8b1e9cb5",
+          "name": "QA 1"
+        },
+        {
+          "id": "a17fd974",
+          "name": "Infra/PM 1"
+        },
+        {
+          "id": "39467427",
+          "name": "BrSE 1"
+        }
+      ]
+    },
+    "Cỡ": {
+      "id": "PVTSSF_lAHOECB60M4Bq-k9zhpTR0A",
+      "options": [
+        {
+          "id": "ea0a38b4",
+          "name": "S (≤4h)"
+        },
+        {
+          "id": "d4536f33",
+          "name": "M (≤8h)"
+        },
+        {
+          "id": "f0c79b07",
+          "name": "L (≤16h)"
+        }
+      ]
+    },
+    "SWP": {
+      "id": "PVTF_lAHOECB60M4Bq-k9zhpTR04"
+    },
+    "Estimate (h)": {
+      "id": "PVTF_lAHOECB60M4Bq-k9zhpTR1U"
+    },
+    "Iteration": {
+      "id": "PVTIF_lAHOECB60M4Bq-k9zhpTR2Q",
+      "configuration": {
+        "iterations": [
+          {
+            "id": "98d1c0dd",
+            "title": "Sprint 1",
+            "startDate": "2026-11-16"
+          },
+          {
+            "id": "c7c0f39d",
+            "title": "Sprint 2",
+            "startDate": "2026-11-30"
+          },
+          {
+            "id": "ed17a17a",
+            "title": "Sprint 3",
+            "startDate": "2026-12-14"
+          },
+          {
+            "id": "c8fa8bcc",
+            "title": "Sprint 4",
+            "startDate": "2026-12-28"
+          },
+          {
+            "id": "91b7f346",
+            "title": "Sprint 5",
+            "startDate": "2027-01-11"
+          },
+          {
+            "id": "50255de8",
+            "title": "Sprint 6",
+            "startDate": "2027-01-25"
+          },
+          {
+            "id": "7587a8d7",
+            "title": "Sprint 7",
+            "startDate": "2027-02-08"
+          },
+          {
+            "id": "bbacd1c1",
+            "title": "Sprint 8",
+            "startDate": "2027-02-22"
+          },
+          {
+            "id": "ee4947ba",
+            "title": "Sprint 9",
+            "startDate": "2027-03-08"
+          },
+          {
+            "id": "814b806c",
+            "title": "Sprint 10",
+            "startDate": "2027-03-22"
+          }
+        ]
+      }
+    }
+  }
+}

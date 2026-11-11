@@ -99,7 +99,7 @@ def main():
     bd = json.loads((CONFIG_FILE.parent.parent / "breakdown" / "breakdown.json").read_text(encoding="utf-8"))
     ensure_labels(cfg)
     ensure_project(cfg)
-    ensure_fields(cfg, [f"{e['id']} {e['name']}"[:50] for e in bd["epics"]])
+    ensure_fields(cfg, [f"{e['id']} {e['name']}"[:50].strip() for e in bd["epics"]])
     save_json(CONFIG_FILE, cfg)
     print("Project:", cfg["project_url"])
 

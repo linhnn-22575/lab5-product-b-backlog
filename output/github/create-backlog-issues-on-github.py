@@ -14,7 +14,7 @@ from mock_owner_assignment import assign_owners
 CREATE_Q = ("mutation($i:CreateIssueInput!){createIssue(input:$i){issue{id number url "
             "projectItems(first:5){nodes{id project{id}}}}}}")
 KIND_VI = {"epic": "Epic", "story": "Issue", "task": "Sub-issue"}
-FIELD_BATCH = 60  # aliased mutations per request
+FIELD_BATCH = 12  # aliased mutations per request (60 caused 502/504 timeouts)
 
 
 def option_id(cfg, field, name):
@@ -60,6 +60,29 @@ def create_issues(cfg, items, by_id, owner, state):
         time.sleep(1.0)  # stay well under 80 content-creating requests / minute
 
 
+def resolve_missing_item_ids(cfg, state):
+    """createIssue often returns no projectItems yet (eventual consistency); look them up."""
+    missing = {v["number"]: k for k, v in state["issues"].items() if not v.get("item_id")}
+    if not missing:
+        return
+    q = ("query($p:ID!,$c:String){node(id:$p){... on ProjectV2{items(first:100,after:$c){"
+         "pageInfo{hasNextPage endCursor} nodes{id content{... on Issue{number}}}}}}}")
+    cursor = None
+    while True:
+        page = gql(q, {"p": cfg["project_id"], "c": cursor})["node"]["items"]
+        for n in page["nodes"]:
+            num = (n.get("content") or {}).get("number")
+            if num in missing:
+                state["issues"][missing[num]]["item_id"] = n["id"]
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        cursor = page["pageInfo"]["endCursor"]
+    save_json(STATE_FILE, state)
+    left = [k for k, v in state["issues"].items() if not v.get("item_id")]
+    if left:
+        sys.exit(f"STOP: no project item for {left[:10]}")
+
+
 def fill_fields(cfg, items, owner, epic_names, state):
     todo = [it for it in items if not state["issues"][it["id"]]["fields_done"]]
     batch, batch_ids = [], []
@@ -96,9 +119,10 @@ def main():
     cfg = load_json(CONFIG_FILE, None)
     if not cfg or "fields" not in cfg:
         sys.exit("Run setup-github-project-and-fields.py first.")
-    epic_names = {e["id"]: f"{e['id']} {e['name']}"[:50] for e in epics}
+    epic_names = {e["id"]: f"{e['id']} {e['name']}"[:50].strip() for e in epics}
     state = load_json(STATE_FILE, {"issues": {}})
     create_issues(cfg, items, by_id, owner, state)
+    resolve_missing_item_ids(cfg, state)
     fill_fields(cfg, items, owner, epic_names, state)
     save_json(HERE / "issue-number-map.json",
               {k: {"number": v["number"], "url": v["url"]} for k, v in state["issues"].items()})

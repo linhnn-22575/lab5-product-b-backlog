@@ -27,7 +27,8 @@ def gql(query, variables=None, retries=6):
         if p.returncode == 0 and not errs:
             return res["data"]
         retryable = any(k in msg.lower() for k in ("secondary rate", "rate limit", "abuse",
-                                                    "502", "504", "timeout", "something went wrong"))
+                                                    "502", "504", "timeout", "something went wrong",
+                                                    "forcibly closed", "connection", "eof"))
         if not retryable or attempt == retries - 1:
             raise RuntimeError(f"GraphQL failed: {msg[:800]}")
         wait = 60 * (attempt + 1)
