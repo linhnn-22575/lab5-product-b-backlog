@@ -25,7 +25,7 @@ Không sửa issue nào. Lý do giữ nguyên: cả 5 issue đều ghi rõ bản
 đã ước khi chia task (task cỡ M trung bình 4,0 SWP, cỡ L trung bình 5,4 SWP). Vì không có chỉnh sửa nên không có luật hiệu chỉnh
 nào lan sang issue khác. Điểm đáng chú ý khi review: các rule BR-DRV đơn lẻ được chấm 1–2 SWP là thấp so với hậu quả pháp lý,
 nhưng hợp lý vì test case theo từng rule có task QA riêng (QA-9.9.5) và phần khó (module chuỗi lái, lắp dữ liệu, kết quả bất biến) đã tách thành task riêng
-có điểm cao hơn (BE-9.6.1, BE-9.2.x, BE-9.8.x).
+có điểm cao hơn: lắp dữ liệu BE-9.2.2 (5), tự chèn nghỉ BE-9.6.2 (6), kết quả bất biến và cổng công bố BE-9.8.1–9.8.4 (5–6). Ngoại lệ đáng ngờ: module chuỗi lái BE-9.6.1 chỉ 3 SWP dù là thuật toán khó nhất của E9 — nên xem lại ở lần review sau.
 
 ## 2. Cách quy ra giờ
 
@@ -43,7 +43,7 @@ có điểm cao hơn (BE-9.6.1, BE-9.2.x, BE-9.8.x).
   3. Giờ là thời gian một người làm xong sub-issue theo DoD (gồm tự test, PR, sửa theo review). Họp, quản lý dự án và buffer rủi ro
      không nằm trong giờ của issue; rủi ro trễ theo dõi ở [progress-report.md](progress-report.md).
   4. Sau mỗi sprint, so SWP đã xong với giờ thực tế để chỉnh hệ số cho cả backlog (không sửa điểm từng issue). Sprint 1 giả lập
-     cho tốc độ thực tế thấp hơn kế hoạch (2,5h/SWP); xem [progress-report.md](progress-report.md) §2 và rủi ro ở §3.
+     đặt giả định tốc độ thực tế 2,5h/SWP (tham số giả lập, không phải số đo); xem [progress-report.md](progress-report.md) §2 và rủi ro ở §3.
 
 ## 3. Tổng theo epic
 
@@ -80,7 +80,7 @@ bằng 1 MD = 8h.
 | F04 Đơn & phân bổ → E6 | 79 MD = 632h | 314h | −318h | Chênh ít nhất trong nhóm chức năng: pipeline phân bổ vẫn là khối khó, LAB-5 còn thêm 3 sửa ở SCR-042 ([P-09](PREMISE.md)) và PREVIOUS_CHANGED ([P-10](PREMISE.md)) |
 | F05 Xuất hàng → E7 | 40 MD = 320h | 114h | −206h | Phase 1 chỉ có kiểm trước xuất SCR-053; lấy hàng/xếp xe chưa làm |
 | F07 phần lập tuyến (FN-0701/0702/0705) → E8 | 39 MD = 312h | 236h | −76h | Gần nhau: thêm việc giữ tuyến `published` khi đổi ([P-03](PREMISE.md)) và chặn hủy tuyến có đơn đã xuất ([P-11](PREMISE.md)) bù lại phần đã thiết kế xong |
-| **F07 giờ lái 2024 (FN-0703/0704/0706) → E9** | 42 MD = 336h | **420h** | **+84h** | **Phần duy nhất LAB-5 cao hơn LAB-1.** Detail design cho thấy việc nhiều hơn lúc ước: thêm màn SCR-064 nhập giờ thực tế ([P-01](PREMISE.md), 36h); SCR-016 thêm 2 tham số ([P-02](PREMISE.md)); module chuỗi lái dùng chung ([P-04](PREMISE.md)) và hash dùng chung ([P-05](PREMISE.md)); kết quả bất biến + cổng công bố (ADR-006); mỗi rule BR-DRV một task + test biên riêng |
+| **F07 giờ lái 2024 (FN-0703/0704/0706) → E9** | 42 MD = 336h | **420h** | **+84h** | **Phần duy nhất LAB-5 cao hơn LAB-1.** Detail design cho thấy việc nhiều hơn lúc ước: thêm màn SCR-064 nhập giờ thực tế ([P-01](PREMISE.md), 36h); SCR-016 thêm 2 tham số ([P-02](PREMISE.md)); module chuỗi lái dùng chung ([P-04](PREMISE.md)) và hash dùng chung ([P-05](PREMISE.md)); kết quả bất biến + cổng công bố (ADR-006); mỗi rule BR-DRV (hoặc cặp rule dùng chung phép tính) một task, cộng các task test riêng |
 | Phân tích, PM & BrSE (nhóm 0 và 21) → E10 + phần PM/BrSE của E11 | 333 MD = 2.664h | 34h | −2.630h | Phân tích đã làm ở LAB-1→4. Công quản lý hằng ngày không thành issue (quy tắc 3 ở §2); backlog chỉ giữ việc có sản phẩm cụ thể |
 | Thiết kế UI | 74 MD = 592h | 0h | −592h | Wireframe và spec màn hình đã xong ở LAB-4; giờ dựng UI nằm trong task FE |
 | Test tự động + tích hợp/UAT → QA/BrSE của E11 | 93 MD = 744h | 50h | −694h | Không có vai trò QA Auto trong team LAB-5; test chức năng nằm trong task QA từng màn (174 SWP = 348h); E11 chỉ còn kịch bản xuyên màn và UAT |
@@ -93,7 +93,7 @@ bằng 1 MD = 8h.
 1. Hai con số khác bản chất. LAB-1 là estimate đấu thầu khi chưa có thiết kế: có buffer 20%, hệ số độ phức tạp và kinh nghiệm,
    cộng toàn bộ công quản lý. LAB-5 là giờ thực thi từng sub-issue sau khi thiết kế đã xong, không buffer. Không nên dùng 1.994h
    để báo giá.
-2. Ở cùng một chức năng, LAB-5 thấp hơn LAB-1 khoảng 2–5 lần, trừ F07. Lý do chính: phần phân tích và quyết định kỹ thuật đã tiêu ở
-   LAB-1→4. Nếu sprint 1 cho thấy hệ số 2h/SWP quá lạc quan (bản giả lập: thực tế cần khoảng 2,5h/SWP), tổng Phase 1 lên khoảng 2.500h.
+2. Ở cùng một chức năng, LAB-5 thấp hơn LAB-1 khoảng 2–6,5 lần (E6 thấp nhất 2×, E1 cao nhất 6,5×), trừ F07. Lý do chính: phần phân tích và quyết định kỹ thuật đã tiêu ở
+   LAB-1→4. Nếu thực tế cần 2,5h/SWP (đây là tham số đặt cho sprint giả lập, chưa phải số đo thật), tổng Phase 1 lên khoảng 2.500h.
 3. F07 giờ lái đi ngược chiều: càng chi tiết càng thấy thêm việc. Đây là bằng chứng cho yêu cầu của đề — ràng buộc giờ lái 2024
    làm tăng effort và phải tách riêng thành epic E9 để theo dõi.

@@ -3,7 +3,7 @@
 - **Iteration trên Project:** `Sprint 1` — field *Iteration* của [GitHub Project](https://github.com/users/linhnn-22575/projects/1)
   (lọc `iteration:"Sprint 1"` để xem đúng 36 sub-issue của sprint).
 - **Khoảng thời gian giả lập:** 2026/11/16 (thứ Hai) → 2026/11/27 (thứ Sáu), 10 ngày làm việc. Iteration trên Project kéo tới 2026/11/29.
-- **Ngày lập báo cáo:** 2026/11/27, cuối sprint. Số liệu đọc lại từ Project sau khi cập nhật, không phải từ bảng tính riêng.
+- **Ngày lập báo cáo (giả lập):** 2026/11/27, cuối sprint; bài làm thực tế ngày 2026/11/11. Số liệu đọc lại từ Project sau khi cập nhật, không phải từ bảng tính riêng.
 - **Đội giả định:** BE 1, BE 2, FE 1, FE 2, QA 1, Infra/PM 1, BrSE 1. Mỗi người 6 giờ tập trung/ngày, nhận tối đa 30 SWP (60h theo
   quy ước 2h/SWP ở [estimate.md](estimate.md) §2).
 
@@ -12,8 +12,8 @@
 > [`output/sprint/sprint-1-simulation.json`](output/sprint/sprint-1-simulation.json). Chạy lại cho cùng kết quả.
 
 **Tóm tắt cho khách:** Sprint 1 cam kết 36 việc, 147 SWP. Hoàn thành 23 việc, **91 SWP (62%)**. Nền tảng (E1) xong 44/65 SWP nhưng migration sổ
-tồn kho trễ 2 ngày. Phần giờ lái xe tải 2024 (E9) xong 14/30 SWP. Hai việc đang chờ phía khách: trả lời bộ Q&A và xác nhận pháp lý về
-giới hạn giờ lái. Tốc độ thực tế chậm hơn kế hoạch khoảng 25%; nếu giữ tốc độ này, tổng Phase 1 cần khoảng 2.500h thay vì 1.994h.
+tồn kho vượt giờ (35h đã làm, kế hoạch 20h) và chưa xong. Phần giờ lái xe tải 2024 (E9) xong 14/30 SWP. Hai việc đang chờ phía khách: trả lời bộ Q&A và xác nhận pháp lý về
+giới hạn giờ lái. Bản giả lập đặt tốc độ thực tế chậm hơn kế hoạch 25%; nếu giữ tốc độ này, tổng Phase 1 cần khoảng 2.500h thay vì 1.994h.
 
 ## 1. Trạng thái
 
@@ -68,7 +68,7 @@ Thực tế lệch kế hoạch ở ba chỗ:
 1. **Ngày 1 không giảm.** Mỗi người phải làm xong task đầu tiên trong hàng việc (7,5–15h thực tế) mới có task Done, nên task xong sớm nhất
    là ngày 2. Đây là hình dạng bình thường với task 4–16h, không phải dấu hiệu trễ.
 2. **Lệch giữ ở mức khoảng 20 SWP từ D3 tới D6.** Nguyên nhân chính là migration [#4](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/4):
-   số dư sau migrate không khớp `qty_on_hand` của prototype, BE 1 phải chạy lại hai lần (40h thay vì 20h). Hai task xếp sau trong hàng việc
+   số dư sau migrate không khớp `qty_on_hand` của prototype, BE 1 phải chạy lại hai lần; ước lại cần 40h thay vì 20h, cuối sprint đã làm 35h. Hai task xếp sau trong hàng việc
    của BE 1 ([#5](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/5), [#19](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/19))
    chưa bắt đầu được, kéo theo [#20](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/20) của FE 2. Cùng lúc FE 1 và FE 2 ngồi
    chờ API phần lớn sprint.
@@ -77,7 +77,7 @@ Thực tế lệch kế hoạch ở ba chỗ:
    hai task chờ khách ([#265](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/265), [#259](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/259)).
    Review dồn cuối sprint làm burndown trông tệ hơn khối lượng đã làm.
 
-Tốc độ: task Done tốn trung bình **2,5h/SWP**, kế hoạch là 2h/SWP. Cả đội làm 297,5h trên 420h năng lực; 122,5h bỏ trống chủ yếu ở FE và QA.
+Tốc độ: task Done tốn trung bình **2,5h/SWP**, kế hoạch là 2h/SWP. Lưu ý: 2,5h/SWP là **tham số đầu vào của bản giả lập** (`ACTUAL_FACTOR = 1.25`), không phải kết quả đo; sprint thật mới cho số này. Cả đội làm 297,5h trên 420h năng lực; 122,5h bỏ trống chủ yếu ở FE và QA.
 
 ## 3. Rủi ro trễ tiến độ
 

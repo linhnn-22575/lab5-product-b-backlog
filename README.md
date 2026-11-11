@@ -10,7 +10,7 @@
 - **PREMISE.md có thay đổi:** 14 chỗ thêm/sửa spec (P-01…P-14, trong đó thêm màn mới **SCR-064 乗務実績入力**), 9 giả định bổ sung
   (A5-01…A5-09), 7 hướng đã chốt (D-01…D-07). Không bỏ spec nào. Xem [PREMISE.md](PREMISE.md).
 - **Backlog:** **11 epic · 49 issue · 219 sub-issue**. Riêng ràng buộc giờ lái 2024 là epic **E9** gồm 13 issue và 50 sub-issue,
-  mỗi rule BR-DRV là một sub-issue (nhãn `special-constraint`).
+  mỗi rule BR-DRV (hoặc cặp rule dùng chung một phép tính, ví dụ BR-DRV-04/05, 07/08) là một sub-issue (nhãn `special-constraint`).
 - **Estimate:** 997 SWP (skill `/tkm:sun-estimate`, đã review 5 issue mẫu) → 1.994 giờ theo quy ước 2h/SWP. Xem [estimate.md](estimate.md).
 - **Sprint giả lập đã chạy:** **Sprint 1** (2026/11/16 → 2026/11/27): cam kết 36 sub-issue / 147 SWP, xong 23 / 91 SWP.
   Xem [progress-report.md](progress-report.md).

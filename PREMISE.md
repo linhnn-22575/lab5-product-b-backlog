@@ -47,7 +47,7 @@ Chỉ lấp chỗ spec/RFP để ngỏ; không ghi đè khối RFP đã nêu rõ
 
 | Mã | Vấn đề | Các phương án ở LAB-4 | Phương án chốt | Vì sao |
 |---|---|---|---|---|
-| D-01 | Chia backlog thế nào | README LAB-4 §5: "mục 9 + mục 10 của spec là danh sách việc" (chia theo màn) | Epic theo feature (E1–E8) + **epic riêng E9 cho giờ lái 2024**, mỗi rule BR-DRV một issue | Đề yêu cầu tách riêng hạng mục ràng buộc đặc thù; chia theo màn sẽ trộn rule vào SCR-061 thành 1 cục |
+| D-01 | Chia backlog thế nào | README LAB-4 §5: "mục 9 + mục 10 của spec là danh sách việc" (chia theo màn) | Epic theo feature (E1–E8) + **epic riêng E9 cho giờ lái 2024**, mỗi rule BR-DRV (hoặc cặp rule dùng chung phép tính) một sub-issue | Đề yêu cầu tách riêng hạng mục ràng buộc đặc thù; chia theo màn sẽ trộn rule vào SCR-061 thành 1 cục |
 | D-02 | Đổi tuyến sau công bố | SCR-062: tuyến về `created` · SCR-053: chỉ xuất khi `published` (2 spec ngược nhau) | Tuyến giữ `published`, bản nháp nằm ở `route_versions` (P-03) | Khớp BR "tài xế luôn nhận bản published mới nhất"; không kẹt kho |
 | D-03 | Nơi đặt thuật toán chèn nghỉ | SCR-060: SQL khi lưu · ADR-006: engine TS | Module TS duy nhất (P-04) | Một nguồn sự thật cho BR-DRV-11, unit test bảng kịch bản được |
 | D-04 | Nơi tính hash đầu vào | SCR-061: TS · SCR-062: SQL | Hàm SQL dùng chung, engine TS chỉ nhận snapshot (P-05) | `publish_route` phải tính lại trong cùng khóa dòng |

@@ -33,7 +33,7 @@ Dữ liệu gốc của backlog: [`output/breakdown/breakdown.json`](output/brea
 **Cách dùng epic → issue → sub-issue trên GitHub Project** — [Project #1](https://github.com/users/linhnn-22575/projects/1) (public)
 - **Epic** = issue có label `type:epic`, tên `E9 ★ Ràng buộc giờ lái…`. **Issue** = story, gắn làm sub-issue của epic.
   **Sub-issue** = task, gắn làm sub-issue của story. Tiêu đề mở đầu bằng mã task (`BE-9.6.1 …`) để truy ngược về `breakdown.json`.
-- Field của Project: `Status` (Todo / In Progress / In Review / Blocked / Done) · `Iteration` (Sprint 1–10, 2 tuần, từ 2026/11/16) ·
+- Field của Project: `Status` (Todo / In Progress / In Review / Blocked / Done) · `Iteration` (đã tạo Sprint 1–10, 2 tuần, từ 2026/11/16; hiện mới gán Sprint 1 cho 36 sub-issue, phần còn lại gán khi lập kế hoạch từng sprint) ·
   `Loại` (Epic / Issue / Sub-issue) · `Epic` · `Vai trò` · `Phụ trách` (người giả định: BE 1–2, FE 1–2, QA 1, Infra/PM 1, BrSE 1) · `Cỡ` (S/M/L) · `SWP` (điểm skill chấm, đã review) · `Estimate (h)`.
 - Assignee của GitHub chỉ nhận tài khoản thật, nên người phụ trách giả định nằm ở field `Phụ trách`. Label: `type:epic/story/task`, `role:be/fe/qa/infra/pm/brse`, `special-constraint` cho mọi mục ràng buộc giờ lái 2024 (E9: 50 sub-issue, 13 issue, 1 epic).
 - Phụ thuộc (`depends_on` trong JSON) ghi thành dòng "Blocked by #…" trong thân issue. Hai chuỗi phải làm trước:
@@ -75,7 +75,7 @@ Dữ liệu gốc của backlog: [`output/breakdown/breakdown.json`](output/brea
 
 ## 3. Hạng mục chịu ràng buộc đặc thù của đề — giới hạn giờ lái xe tải từ 2024
 
-Toàn bộ nằm trong **epic E9**, mang label `special-constraint`, tiêu đề có tiền tố `[DRV]`. Mỗi rule là một sub-issue riêng, kèm
+Toàn bộ nằm trong **epic E9**, mang label `special-constraint`, tiêu đề có tiền tố `[DRV]`. Mỗi rule là một sub-issue riêng; riêng các cặp rule dùng chung một phép tính (BR-DRV-04/05, 07/08, 24/25; 20/22/23 gom theo cổng công bố) đi chung một sub-issue. Mỗi sub-issue kèm
 giới hạn, mức (vi phạm / cảnh báo), cách xác định khoảng giờ vi phạm theo SCR-061 §logic-9 và ca biên trong tiêu chí xong.
 
 | Ràng buộc | Issue | Vì sao tách riêng |
@@ -101,7 +101,7 @@ giới hạn, mức (vi phạm / cảnh báo), cách xác định khoảng giờ
 
 **Ảnh hưởng tới ước lượng:** E9 chiếm 50/219 sub-issue và khoảng 20% giờ trần (520/2.560h). Riêng phần kiểm rule
 ([S9.3 #210](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/210)–[S9.7 #222](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/222)) là 12 task, đều có unit test biên (4h00 đạt / 4h01 vi phạm; nghỉ 9 phút không tính; 3 lần × 10 phút reset khối;
-13h00 / 15h00 đúng biên). Ở LAB-1, F07 chỉ được ước lượng chung là "điều phối tuyến" (xem `estimate.md`).
+13h00 / 15h00 đúng biên). Ở LAB-1, F07 tách thành phần lập tuyến (39 MD) và phần giờ lái (42 MD); LAB-5 ước phần giờ lái cao hơn LAB-1 (xem `estimate.md` §4).
 
 ## 4. Chỗ hở hoặc mâu thuẫn của spec LAB-4 phát hiện khi break
 
@@ -132,6 +132,6 @@ giới hạn, mức (vi phạm / cảnh báo), cách xác định khoảng giờ
 | SCR-010 §7 vs RFP S3-01 | Không có vòng duyệt master SKU | Tạo issue làm rõ [BRSE-10.1.2 #264](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/264) |
 | SCR-001 item 7-2 | M_104 không có nhánh nào sinh ra | Tạo issue làm rõ [BRSE-2.3.6 #42](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/42) |
 | SCR-011 item 18-14 | Job 00:05 đổi trạng thái dòng đơn là INFERRED, không có trong ADR | Tạo issue làm rõ [BRSE-3.4.7 #68](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/68) |
-| SCR-010 item 2 vs SCR-011 item 1-2 | Điều hướng master: tab chung hay menu trái | Đã sửa thiết kế trong task [FE-3.1.3 #47](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/47) (chọn 1 cách cho cả nhóm `/master/*`) |
+| SCR-010 item 2 vs SCR-011 item 1-2 | Điều hướng master: tab chung hay menu trái | Để mở, chọn khi làm: không đổi spec, task [FE-3.1.3 #47](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/47) (chọn 1 cách cho cả nhóm `/master/*`) |
 | SCR-063 vs business-rules sm-unforeseeable | "Sai → tạo bản mới tham chiếu bản cũ" nhưng không có cột tham chiếu | Để mở: chưa đủ chắc để thêm cột; hỏi ở [BRSE-9.13.2 #260](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/260) |
 | Nhiều spec (SCR-010/016/018/037/040/041/043/062) | Ghi "chưa có trong database-design" đã lỗi thời | Tạo issue làm rõ [BRSE-10.2.1 #267](https://github.com/linhnn-22575/lab5-product-b-backlog/issues/267) (rà đồng bộ) |
