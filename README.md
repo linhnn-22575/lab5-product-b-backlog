@@ -27,7 +27,7 @@
 Kiểm tra truy cập không cần đăng nhập (2026/11/11): gửi request không kèm cookie hay token tới repo, Project, file HTML trong repo và
 một issue (#197), cả 4 đều trả về HTTP 200.
 
-- [ ] Đã mở thử bằng cửa sổ ẩn danh: repo, Project (bảng và field), issue epic #197 và file HTML.
+- [x] Đã mở thử bằng cửa sổ ẩn danh: repo, Project (bảng và field), issue epic #197 và file HTML.
 
 Các view nên dùng trên Project: lọc `iteration:"Sprint 1"` để xem sprint; nhóm theo field `Epic` hoặc `Phụ trách`; lọc
 `label:special-constraint` để xem riêng các hạng mục giờ lái 2024.
